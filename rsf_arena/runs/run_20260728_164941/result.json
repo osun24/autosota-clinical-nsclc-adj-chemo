@@ -1,0 +1,7 @@
+{
+  "chosen_trial": 2,
+  "elapsed_seconds": 11.761972188949585,
+  "n_features": 19,
+  "val_ci": 0.6981526064953569,
+  "val_rmst_diff": 6.850758540607032
+}
