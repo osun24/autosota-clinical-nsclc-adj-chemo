@@ -83,8 +83,52 @@ presume a prior best. iter_001 is measurement-only against a baseline that has
 no interval, so none of the three applies honestly. Recorded as BASELINE, and
 this entry's numbers become the reference for iter_002 onward.
 
-- val_ci: PENDING RUN
-- val_rmst_diff: PENDING RUN
+- val_ci: 0.6979 ± 0.0239
+- val_rmst_diff: 7.35 ± 2.70 (months)
 - n_features: 19
-- verdict: PENDING RUN
-- one_line_lesson: PENDING RUN
+- verdict: BASELINE (measurement-only; establishes the comparison point)
+- one_line_lesson: The C-index is seed-stable but `val_rmst_diff` moves 5.72 to
+  9.88 months on forest seed alone, so a single-seed RMST number is not a
+  result and nothing below roughly 2.7 months of movement can be called BETTER.
+
+**Reported uncertainty (added columns, neither objective replaced).**
+
+| objective | point (panel mean) | se_total | se_boot | sd_seed | iqr_boot |
+|---|---|---|---|---|---|
+| val_ci | 0.6979 | 0.0239 | 0.0239 | 0.0009 | 0.0318 |
+| val_rmst_diff | 7.3547 | 2.7024 | 2.6775 | 1.1574 | 3.5095 |
+
+- per-seed val_ci: 0.6982, 0.6976, 0.6964, 0.6985, 0.6990, 0.6990, 0.6973,
+  0.6983, 0.6970, 0.6973
+- per-seed val_rmst_diff: 6.85, 6.85, 7.29, 9.88, 7.67, 6.89, 8.59, 7.25,
+  6.55, 5.72
+- recommendation agreement: 0.966 mean modal frequency; 84.2% of validation
+  patients get a unanimous recommendation across the panel
+- ACT recommended for 30.5% of validation patients on average
+- metric draws: 500 of 500 usable; elapsed 44.3 s of the 25-min budget
+
+**Findings.**
+1. The hypothesis holds, and more sharply than expected for RMST. `sd_seed` for
+   `val_ci` is 0.0009, so discrimination is essentially seed-independent; its
+   uncertainty is almost entirely validation-sampling (`se_boot` 0.0239). For
+   `val_rmst_diff` the seed spread alone is 1.16 months across a 5.72-to-9.88
+   range, on top of a 2.68-month sampling SE.
+2. The previously reported headline of 6.85 months was seed 7's draw. The panel
+   mean is 7.35. Neither number is wrong; the single-seed one is just not
+   reproducible, which is what mattered.
+3. `val_rmst_diff` sits about 2.7 SE above zero. There is a real alignment
+   signal here, but it is not comfortably established, and it is the objective
+   every future iteration will be tempted to chase.
+4. Recommendation instability concentrates in a minority of patients: 84.2% are
+   unanimous across seeds, so roughly 41 of 259 validation patients flip
+   recommendation on seed alone. That is the likely source of the RMST swing,
+   since flipping a patient moves them between the aligned and unaligned KM
+   curves.
+
+**Consequences for the loop (prespecified now, before any tuning).**
+- Both objectives are reported as panel means from here on. Single-seed numbers
+  are not eligible for a verdict.
+- Red line 7 thresholds for the next iteration: `val_ci` must gain more than
+  0.0239 and `val_rmst_diff` more than 2.70 months for BETTER. An RMST gain of
+  1-2 months is inside seed-plus-sampling noise and is MIXED at best.
+- A gain that appears only after changing the reporting seed is not a gain.

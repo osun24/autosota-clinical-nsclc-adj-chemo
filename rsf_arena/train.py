@@ -30,6 +30,14 @@ RUNS_DIR = ARENA_DIR / "runs"
 DEFAULT_N_TRIALS = int(os.environ.get("RSF_ARENA_N_TRIALS", "10"))
 DEFAULT_BOOTSTRAPS = int(os.environ.get("RSF_ARENA_BOOTSTRAPS", "2"))
 
+# Prespecified forest seeds for the reporting panel. The first entry is the
+# seed the persisted model uses, so artifacts keep their previous meaning.
+SEED_PANEL = (7, 17, 27, 37, 47, 57, 67, 77, 87, 97)
+# Validation-row resamples used to put an interval around an already-computed
+# metric. This never touches fitting or hyperparameter selection.
+DEFAULT_METRIC_DRAWS = int(os.environ.get("RSF_ARENA_METRIC_DRAWS", "500"))
+METRIC_DRAW_SEED = 20260728
+
 
 def _outcome(df: pd.DataFrame) -> np.ndarray:
     return Surv.from_arrays(
@@ -80,6 +88,155 @@ def fit_model_from_metadata(
         sample_weight=weights,
     )
     return model, feature_names, list(metadata["clinical_columns"])
+
+
+def _valid_predictions(
+    model: RandomSurvivalForest,
+    valid_df: pd.DataFrame,
+    feature_names: list[str],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Observed risk and the counterfactual ACT-vs-OBS recommendation."""
+    risk = prepare.predict_rsf_risk(
+        model, prepare.build_matrix_from_feature_names(valid_df, feature_names)
+    )
+    treated = valid_df.copy()
+    treated["Adjuvant Chemo"] = 1
+    untreated = valid_df.copy()
+    untreated["Adjuvant Chemo"] = 0
+    risk_treated = prepare.predict_rsf_risk(
+        model, prepare.build_matrix_from_feature_names(treated, feature_names)
+    )
+    risk_untreated = prepare.predict_rsf_risk(
+        model, prepare.build_matrix_from_feature_names(untreated, feature_names)
+    )
+    return risk, (risk_treated < risk_untreated).astype(int)
+
+
+def _metric_pair(
+    valid_df: pd.DataFrame, risk: np.ndarray, recommendation: np.ndarray
+) -> tuple[float, float]:
+    """Both objectives, using the frozen metric functions unchanged."""
+    return (
+        prepare.cindex(
+            risk,
+            valid_df["OS_MONTHS"].to_numpy(float),
+            valid_df["OS_STATUS"].to_numpy(int),
+        ),
+        prepare.alignment_rmst_difference(valid_df, recommendation),
+    )
+
+
+def _spread(values: np.ndarray) -> dict[str, float]:
+    quartiles = np.percentile(values, [25, 75])
+    return {
+        "mean": float(values.mean()),
+        "sd": float(values.std(ddof=1)),
+        "iqr": float(quartiles[1] - quartiles[0]),
+    }
+
+
+def seed_panel_report(
+    metadata: dict,
+    train_df: pd.DataFrame,
+    valid_df: pd.DataFrame,
+    metric_draws: int = DEFAULT_METRIC_DRAWS,
+) -> tuple[dict, RandomSurvivalForest]:
+    """Refit across a fixed seed panel and quantify both objectives.
+
+    Uncertainty has two components: spread across forest seeds, and the
+    sampling spread of the validation rows. The panel refits on training rows
+    only; the row resampling is a post-hoc interval on an already-computed
+    metric and never informs fitting or model selection.
+    """
+    feature_names = list(metadata["feature_names"])
+    weights, _, _ = prepare.compute_iptw(
+        train_df, covariate_cols=list(metadata["pretreatment_columns"])
+    )
+    matrix = prepare.build_matrix_from_feature_names(train_df, feature_names)
+    outcome = _outcome(train_df)
+    base_params = {
+        key: value
+        for key, value in metadata["rsf_params"].items()
+        if key != "random_state"
+    }
+
+    primary_model = None
+    risks, recommendations, per_seed = [], [], []
+    for seed in SEED_PANEL:
+        model = make_rsf(**base_params, random_state=seed)
+        model.fit(matrix, outcome, sample_weight=weights)
+        risk, recommendation = _valid_predictions(
+            model, valid_df, feature_names
+        )
+        val_ci, val_rmst_diff = _metric_pair(valid_df, risk, recommendation)
+        per_seed.append(
+            {
+                "seed": int(seed),
+                "val_ci": val_ci,
+                "val_rmst_diff": val_rmst_diff,
+                "act_recommended_frac": float(recommendation.mean()),
+            }
+        )
+        risks.append(risk)
+        recommendations.append(recommendation)
+        # Only the primary seed's forest is retained; each one is large.
+        if primary_model is None:
+            primary_model = model
+
+    risks = np.asarray(risks)
+    recommendations = np.asarray(recommendations)
+    panel_ci = np.array([row["val_ci"] for row in per_seed])
+    panel_rmst = np.array([row["val_rmst_diff"] for row in per_seed])
+
+    rng = np.random.default_rng(METRIC_DRAW_SEED)
+    n_valid = len(valid_df)
+    draw_ci, draw_rmst = [], []
+    for _ in range(metric_draws):
+        index = rng.integers(0, n_valid, size=n_valid)
+        resampled = valid_df.iloc[index]
+        if int(resampled["OS_STATUS"].sum()) == 0:
+            continue
+        pairs = [
+            _metric_pair(resampled, risks[k][index], recommendations[k][index])
+            for k in range(len(SEED_PANEL))
+        ]
+        draw_ci.append(float(np.mean([pair[0] for pair in pairs])))
+        draw_rmst.append(float(np.mean([pair[1] for pair in pairs])))
+    draw_ci = np.asarray(draw_ci)
+    draw_rmst = np.asarray(draw_rmst)
+
+    def summarize(
+        panel: np.ndarray, draws: np.ndarray
+    ) -> dict[str, float]:
+        seed_spread = _spread(panel)
+        draw_spread = _spread(draws)
+        se_seed = seed_spread["sd"] / np.sqrt(len(panel))
+        return {
+            "point": seed_spread["mean"],
+            "se_total": float(
+                np.sqrt(draw_spread["sd"] ** 2 + se_seed**2)
+            ),
+            "se_boot": draw_spread["sd"],
+            "iqr_boot": draw_spread["iqr"],
+            "sd_seed": seed_spread["sd"],
+        }
+
+    act_fraction = recommendations.mean(axis=0)
+    modal_fraction = np.maximum(act_fraction, 1.0 - act_fraction)
+    report = {
+        "n_seeds": len(SEED_PANEL),
+        "seeds": [int(seed) for seed in SEED_PANEL],
+        "metric_draws": int(len(draw_ci)),
+        "val_ci": summarize(panel_ci, draw_ci),
+        "val_rmst_diff": summarize(panel_rmst, draw_rmst),
+        "recommendation_agreement": float(modal_fraction.mean()),
+        "recommendation_unanimous_frac": float(
+            np.mean(modal_fraction == 1.0)
+        ),
+        "act_recommended_frac_mean": float(act_fraction.mean()),
+        "per_seed": per_seed,
+    }
+    return report, primary_model
 
 
 def _select_compromise(study: optuna.Study) -> optuna.trial.FrozenTrial:
@@ -181,14 +338,22 @@ def run(
         "feature_names": feature_names,
         "rsf_params": params,
     }
-    model, _, _ = fit_model_from_metadata(
-        metadata, train_df, valid_df, refit_train_valid=False
-    )
+    panel, model = seed_panel_report(metadata, train_df, valid_df)
     result = {
         **prepare.evaluate_on_valid(model, valid_df, feature_names),
         "chosen_trial": chosen.number,
+        "seed_panel": panel,
         "elapsed_seconds": time.time() - started,
     }
+    # The panel's first seed is the persisted model, so its metrics must match
+    # the frozen evaluator exactly. Guards against the panel drifting from it.
+    primary = panel["per_seed"][0]
+    for key in ("val_ci", "val_rmst_diff"):
+        if not np.isclose(primary[key], result[key], rtol=0, atol=1e-12):
+            raise RuntimeError(
+                f"Seed-panel {key} disagrees with the frozen evaluator: "
+                f"{primary[key]!r} vs {result[key]!r}"
+            )
     metadata["result"] = result
     if save_artifacts:
         result["run_dir"] = str(_save_artifacts(result, model, metadata))
