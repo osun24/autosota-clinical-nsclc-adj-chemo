@@ -1033,8 +1033,43 @@ Uno's C is added as a new column (#4, explicitly the admissibility condition
 this idea is CLEARED under). Recommendation rule untouched (#5). ACT stays
 binary (#6). Measurement-only (#7).
 
-- val_ci: PENDING RUN
-- val_rmst_diff: PENDING RUN
+- val_ci: 0.6992 ± 0.0239
+- val_rmst_diff: 7.37 ± 2.64 (months)
 - n_features: 19
-- verdict: PENDING RUN
-- one_line_lesson: PENDING RUN
+- verdict: NEUTRAL (measurement-only; headline numbers unchanged from
+  iter_010, as expected)
+- one_line_lesson: Uno's IPCW C-index (0.6951 ± 0.0011) sits within 0.004 of
+  Harrell's C (0.6992), both seed-stable — `val_ci` is not being inflated by
+  treatment- or covariate-dependent censoring, so the discrimination number
+  this whole arena has treated as stable is corroborated by an
+  independent estimator, not just self-consistent.
+
+**Uno's IPCW C-index vs Harrell's C (panel, tau=60).**
+
+| | mean | sd | iqr |
+|---|---|---|---|
+| Harrell's C (`val_ci`, frozen metric) | 0.6992 | 0.0009 | — |
+| Uno's IPCW C (`uno_ci`, added diagnostic) | 0.6951 | 0.0011 | 0.0009 |
+
+- per-seed Harrell: 0.6995, 0.6997, 0.6985, 0.7002, 0.7009, 0.6991, 0.6984,
+  0.6973, 0.6994, 0.6988
+- per-seed Uno: 0.6949, 0.6958, 0.6944, 0.6958, 0.6968, 0.6951, 0.6947,
+  0.6927, 0.6953, 0.6951 — tracks Harrell's C almost seed-for-seed
+
+**Findings.**
+1. The two estimators agree to within 0.004, and Uno's C is uniformly a hair
+   lower rather than higher — the direction a naive/optimistic bias would NOT
+   produce. If Harrell's C were inflated by differential censoring between
+   ACT and OBS (iter_005 already showed the arms have different weight/
+   propensity profiles), Uno's IPCW correction would be expected to pull the
+   estimate down more noticeably than 0.004.
+2. Both metrics are essentially seed-invariant (sd ~0.001), matching every
+   prior finding in this log that discrimination is the stable half of this
+   problem and RMST is the volatile half.
+3. This closes out a standing question raised implicitly since iter_001:
+   whether the C-index headline is trustworthy on its own terms. It is.
+
+**Disposition.** `val_ci` and `val_rmst_diff` remain the only two metrics used
+for BETTER/WORSE verdicts, per red line 4. `uno_ci` is retained permanently as
+a corroborating diagnostic at negligible extra cost (reuses already-computed
+risk predictions, no refitting).

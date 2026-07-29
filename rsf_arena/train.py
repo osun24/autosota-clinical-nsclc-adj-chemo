@@ -15,6 +15,7 @@ import pandas as pd
 from optuna.samplers import NSGAIISampler
 from sklearn.inspection import permutation_importance
 from sksurv.ensemble import RandomSurvivalForest
+from sksurv.metrics import concordance_index_ipcw
 from sksurv.util import Surv
 
 try:
@@ -216,6 +217,8 @@ CANDIDATE_W_CLIPS: tuple[tuple[float, float], ...] = (
     (0.05, 10.0),
 )
 DEFAULT_W_CLIP = (0.1, 10.0)
+# Matches the RMST horizon so both metrics reference the same follow-up window.
+UNO_CI_TAU = 60.0
 
 
 def select_iptw_clip(
@@ -292,6 +295,7 @@ def seed_panel_report(
     )
     matrix = prepare.build_matrix_from_feature_names(train_df, feature_names)
     outcome = _outcome(train_df)
+    valid_outcome = _outcome(valid_df)
     base_params = {
         key: value
         for key, value in metadata["rsf_params"].items()
@@ -309,6 +313,13 @@ def seed_panel_report(
             model, valid_df, feature_names
         )
         val_ci, val_rmst_diff = _metric_pair(valid_df, risk, recommendation)
+        # Uno's IPCW C-index: additive diagnostic, censoring weights derived
+        # from the training outcome distribution only (never validation).
+        uno_ci = float(
+            concordance_index_ipcw(
+                outcome, valid_outcome, risk, tau=UNO_CI_TAU
+            )[0]
+        )
         per_seed.append(
             {
                 "seed": int(seed),
@@ -316,6 +327,7 @@ def seed_panel_report(
                 "val_rmst_diff": val_rmst_diff,
                 "act_recommended_frac": float(recommendation.mean()),
                 "oob_ci": float(getattr(model, "oob_score_", float("nan"))),
+                "uno_ci": uno_ci,
             }
         )
         risks.append(risk)
@@ -407,6 +419,7 @@ def seed_panel_report(
         ),
         "act_recommended_frac_mean": float(act_fraction.mean()),
         "oob_ci": _spread(np.array([row["oob_ci"] for row in per_seed])),
+        "uno_ci": _spread(np.array([row["uno_ci"] for row in per_seed])),
         "iptw_diagnostics": iptw_diagnostics(train_df, weights),
         "optimism_gap_ci": float(
             panel_ci.mean()
