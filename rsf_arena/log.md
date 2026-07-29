@@ -722,3 +722,41 @@ the interaction-expanded feature set (`clinical_columns + INTERACTION_TERMS`,
 iter_008 will check whether the interaction terms are mechanistically
 load-bearing (feature importance) before the MIXED status is resolved.
 iter_001's panel numbers remain the formal comparison point for BETTER.
+
+---
+
+### iter_008 — permutation feature importance for the interaction terms
+
+- type: CODE
+- idea_id: `feature_importance_diagnostic` (new; not in the idea library —
+  generated to resolve iter_007's MIXED status with a mechanistic check)
+- hypothesis: If iter_007's RMST shift is because the forest is actually using
+  the six interaction terms, at least some of them should rank among the more
+  important of the 25 features by permutation importance (C-index drop when
+  permuted); if they rank at the bottom, the RMST shift is more likely
+  incidental to correlated main-effect splits changing rather than to the
+  interaction terms themselves.
+- changed_files: `train.py`
+
+**Design.** `sklearn.inspection.permutation_importance` on the primary panel
+model (seed 7), scored via the model's built-in `.score()` (Harrell's C,
+matching the frozen `val_ci` definition), n_repeats=20, seed=13, evaluated on
+validation rows exactly as the frozen evaluator already does. This measures
+C-index sensitivity, not RMST sensitivity directly (no simple RMST-compatible
+scorer exists for `permutation_importance`'s API) — the log will state this
+limitation. Diagnostic only: computed after the model is already fit and
+selected; does not feed back into fitting, search, or feature_names.
+
+**Red-line audit.** No new file reads (#1 PASS). Uses the already-fit
+model and already-loaded validation rows exactly as the frozen evaluator does
+— no new information flow into fitting or selection (#2 PASS). No rows
+dropped (#3 PASS). `val_ci`/`val_rmst_diff` untouched; this is an added
+diagnostic (#4 PASS). Recommendation rule untouched (#5 PASS). ACT stays
+binary (#6 PASS). Measurement-only; not expected to move either objective
+(#7 PASS).
+
+- val_ci: PENDING RUN
+- val_rmst_diff: PENDING RUN
+- n_features: 25
+- verdict: PENDING RUN
+- one_line_lesson: PENDING RUN
