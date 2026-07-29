@@ -1073,3 +1073,73 @@ binary (#6). Measurement-only (#7).
 for BETTER/WORSE verdicts, per red line 4. `uno_ci` is retained permanently as
 a corroborating diagnostic at negligible extra cost (reuses already-computed
 risk predictions, no refitting).
+
+---
+
+### iter_012 — S-learner / T-learner standardized contrast ensemble
+
+- type: ALGO
+- idea_id: `s_t_contrast_ensemble`
+- hypothesis: The current model is a pure S-learner (one forest, ACT as a
+  covariate). Averaging its standardized counterfactual contrast with an
+  independently fit RSF T-learner's standardized contrast (two arm-specific
+  forests) will produce a recommendation less dependent on any single model's
+  idiosyncratic splits, potentially improving `val_rmst_diff` beyond the
+  standing 7.355 ± 2.70 baseline. Reported as a diagnostic comparison first
+  (not swapped into the headline), consistent with how iter_002's ensemble
+  and iter_007-009's interaction terms were evaluated before any adoption
+  decision.
+- changed_files: `train.py`
+
+**Design (prespecified before running).**
+1. S-learner: existing single forest, fit on all training rows with IPTW
+   sample weights, exactly as `seed_panel_report` already does.
+2. T-learner: two separate forests, one fit on ACT=1 training rows only, one
+   on ACT=0 training rows only — **no IPTW weights** (there is no cross-arm
+   confounding to correct within a single, already-homogeneous-in-treatment
+   subset). Per `rsf_t_learner`'s stated risk (ACT arm is small — 114 of 775
+   training rows), the ACT-arm forest doubles `min_samples_leaf` relative to
+   the S-learner's chosen value; the OBS-arm forest (661 rows) uses the
+   S-learner's value unchanged.
+3. Contrast for S: `risk(ACT=0) - risk(ACT=1)` from the single forest under
+   both counterfactual settings, exactly as `_valid_predictions` already
+   computes. Contrast for T: `obs_forest.predict(x) - act_forest.predict(x)`
+   applied to every patient regardless of observed arm (both forests score
+   everyone, which is what makes it a counterfactual contrast rather than a
+   factual one).
+4. Standardization (the idea's admissibility condition): mean/SD of each
+   contrast is computed on **training-row predictions only**, never
+   validation, then applied to standardize the validation contrasts.
+   `recommendation = ACT where (z_S + z_T)/2 > 0`.
+5. `val_ci` is deliberately left untouched — it continues to use the
+   S-learner's factual risk, exactly as the frozen evaluator does. Only
+   `val_rmst_diff` is recomputed under the new ensemble recommendation, since
+   that is the objective this idea targets and it keeps the change surgical.
+6. Evaluated across the full 10-seed panel; validation-row bootstrap SEs are
+   skipped for this comparison sweep (same reasoning as iter_010's depth
+   sweep: this is a before/after diagnostic, not the run's headline numbers).
+
+**Red-line audit.**
+1. *Sealed test.* No new file reads. PASS.
+2. *No leakage.* T-learner forests fit on training-row subsets only.
+   Standardization statistics are computed from training predictions only,
+   the idea's explicit admissibility condition. PASS.
+3. *Never drop censored patients.* Arm-specific subsetting keeps all rows
+   within each arm, censored or not; no patient is excluded from the overall
+   analysis. PASS.
+4. *Metric definitions versioned.* `alignment_rmst_difference` unmodified;
+   only its `recommendation` input changes for the diagnostic comparison.
+   `val_ci` is untouched. PASS.
+5. *Counterfactual recommendation.* Strengthened: every patient is scored
+   under both counterfactual arms by both learners. PASS.
+6. *No regimen-level claims.* ACT stays binary throughout. PASS.
+7. *Both objectives.* This iteration is a diagnostic comparison; the run's
+   headline numbers are unchanged from iter_011, so no verdict beyond NEUTRAL
+   applies to the headline. The comparison table decides whether a follow-up
+   should adopt the ensemble recommendation.
+
+- val_ci: PENDING RUN
+- val_rmst_diff: PENDING RUN
+- n_features: 19
+- verdict: PENDING RUN
+- one_line_lesson: PENDING RUN
