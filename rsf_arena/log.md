@@ -755,8 +755,60 @@ diagnostic (#4 PASS). Recommendation rule untouched (#5 PASS). ACT stays
 binary (#6 PASS). Measurement-only; not expected to move either objective
 (#7 PASS).
 
-- val_ci: PENDING RUN
-- val_rmst_diff: PENDING RUN
+- val_ci: 0.6976 ± 0.0242
+- val_rmst_diff: 8.64 ± 2.76 (months)
 - n_features: 25
-- verdict: PENDING RUN
-- one_line_lesson: PENDING RUN
+- verdict: NEUTRAL (measurement-only; bit-identical to iter_007, as expected)
+- one_line_lesson: The RMST shift in iter_007 is not coming from the
+  hypothesized mechanism — every `ACT_x_*` treatment-interaction term ranks in
+  the bottom half of 25 features (two near exactly zero), while
+  `Age_x_StageIII`, a purely prognostic term with no treatment involvement at
+  all, ranks 4th.
+
+**Permutation importance ranking (C-index drop, 20 repeats, primary model).**
+
+| rank | feature | importance | is ACT-interaction? |
+|---|---|---|---|
+| 1 | Stage_II | 0.0533 | no |
+| 2 | Age | 0.0252 | no |
+| 3 | Stage_IA | 0.0204 | no |
+| 4 | **Age_x_StageIII** | 0.0184 | no (prognostic) |
+| 5 | Smoked?_Unknown | 0.0177 | no |
+| 10 | Age_x_Smoked_Yes | 0.0026 | no (prognostic) |
+| 11 | ACT_x_Age | 0.0017 | **yes** |
+| 14 | ACT_x_Male | 0.0001 | **yes** |
+| 19 | ACT_x_StageIII | 0.0000 | **yes** |
+| 22 | Adjuvant Chemo (main effect) | -0.0004 | — |
+| 23 | ACT_x_Adenocarcinoma | -0.0004 | **yes** |
+
+**Findings.**
+1. The idea's stated rationale — covariate-by-ACT terms making treatment-effect
+   modifiers available as single splits — is not supported. All four
+   `ACT_x_*` terms rank 11th or worse of 25, two at essentially zero
+   importance. The main `Adjuvant Chemo` variable itself ranks 22nd, near
+   zero: consistent with iter_003's finding that treatment status is a weak
+   direct predictor of overall risk ranking (C-index), which is unsurprising
+   since C-index measures whole-cohort discrimination, not treatment-specific
+   effect.
+2. `Age_x_StageIII` is genuinely load-bearing (rank 4, importance an order of
+   magnitude above most `ACT_x_*` terms) despite involving no treatment
+   information at all. `Age_x_Smoked_Yes` is modestly used (rank 10).
+3. This resolves *how* iter_007's RMST distribution shifted upward, but not
+   *why* it counts as evidence for the original hypothesis — it doesn't. The
+   forest found a genuinely useful prognostic split shortcut
+   (age-by-late-stage), which changed the risk model broadly enough to shift
+   which patients land on which side of the counterfactual recommendation
+   threshold, which is exactly the mechanism that drives `val_rmst_diff`
+   movement. The four `ACT_x_*` terms are very likely inert ballast, adding
+   feature-count risk (the idea's own stated risk: "redundant terms can
+   distort split selection") without contributing.
+4. Note the caveat already logged in iter_007's pre-audit: permutation
+   importance here measures C-index sensitivity, not RMST sensitivity
+   directly — there is no simple RMST-compatible scorer for this API. The
+   inference above is indirect (via which features the forest's splits
+   actually use), not a direct RMST attribution.
+
+**Consequence for the loop.** iter_009 will trim the interaction budget to
+just the two prognostic terms that show real importance
+(`Age_x_StageIII`, `Age_x_Smoked_Yes`), dropping the four inert `ACT_x_*`
+terms, as follow-up slot 2 of 3 for iter_007's still-open MIXED status.

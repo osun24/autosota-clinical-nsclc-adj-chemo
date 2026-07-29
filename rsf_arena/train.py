@@ -13,6 +13,7 @@ import numpy as np
 import optuna
 import pandas as pd
 from optuna.samplers import NSGAIISampler
+from sklearn.inspection import permutation_importance
 from sksurv.ensemble import RandomSurvivalForest
 from sksurv.util import Surv
 
@@ -230,6 +231,43 @@ def select_iptw_clip(
         scored.append({"w_clip": list(w_clip), **diag})
     best = max(scored, key=lambda row: row["ess"])
     return tuple(best["w_clip"]), scored
+
+
+def feature_importance_diagnostic(
+    model: RandomSurvivalForest,
+    valid_df: pd.DataFrame,
+    feature_names: list[str],
+    n_repeats: int = 20,
+    seed: int = 13,
+) -> dict:
+    """Permutation importance (C-index drop) of the persisted panel model.
+
+    Measures C-index sensitivity only; there is no simple RMST-compatible
+    scorer for `permutation_importance`'s API. Diagnostic only: uses the
+    already-fit model and validation rows exactly as the frozen evaluator
+    does, and does not feed back into fitting, search, or feature selection.
+    """
+    x_valid = prepare.build_matrix_from_feature_names(valid_df, feature_names)
+    y_valid = _outcome(valid_df)
+    result = permutation_importance(
+        model, x_valid, y_valid, n_repeats=n_repeats, random_state=seed
+    )
+    ranked = sorted(
+        zip(feature_names, result.importances_mean, result.importances_std),
+        key=lambda row: row[1],
+        reverse=True,
+    )
+    return {
+        "n_repeats": n_repeats,
+        "ranked": [
+            {
+                "feature": name,
+                "importance_mean": float(mean),
+                "importance_std": float(sd),
+            }
+            for name, mean, sd in ranked
+        ],
+    }
 
 
 def seed_panel_report(
@@ -561,6 +599,9 @@ def run(
         "search": _search_diagnostics(study, chosen),
         "iptw_clip_candidates": clip_candidates,
         "seed_panel": panel,
+        "feature_importance": feature_importance_diagnostic(
+            model, valid_df, feature_names
+        ),
         "elapsed_seconds": time.time() - started,
     }
     # The panel's first seed is the persisted model, so its metrics must match
