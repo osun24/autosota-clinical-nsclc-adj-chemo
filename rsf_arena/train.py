@@ -171,7 +171,9 @@ def seed_panel_report(
     primary_model = None
     risks, recommendations, contrasts, per_seed = [], [], [], []
     for seed in SEED_PANEL:
-        model = make_rsf(**base_params, random_state=seed)
+        # oob_score is a training-side diagnostic only; it is deliberately kept
+        # out of metadata["rsf_params"] so the human finalizer is unaffected.
+        model = make_rsf(**base_params, random_state=seed, oob_score=True)
         model.fit(matrix, outcome, sample_weight=weights)
         risk, recommendation, contrast = _valid_predictions(
             model, valid_df, feature_names
@@ -183,6 +185,7 @@ def seed_panel_report(
                 "val_ci": val_ci,
                 "val_rmst_diff": val_rmst_diff,
                 "act_recommended_frac": float(recommendation.mean()),
+                "oob_ci": float(getattr(model, "oob_score_", float("nan"))),
             }
         )
         risks.append(risk)
@@ -273,6 +276,11 @@ def seed_panel_report(
             np.mean(modal_fraction == 1.0)
         ),
         "act_recommended_frac_mean": float(act_fraction.mean()),
+        "oob_ci": _spread(np.array([row["oob_ci"] for row in per_seed])),
+        "optimism_gap_ci": float(
+            panel_ci.mean()
+            - float(np.mean([row["oob_ci"] for row in per_seed]))
+        ),
         "ensemble": {
             "val_ci": summarize_fixed(ensemble_ci, draw_ens_ci),
             "val_rmst_diff": summarize_fixed(ensemble_rmst, draw_ens_rmst),
@@ -304,6 +312,31 @@ def _select_compromise(study: optuna.Study) -> optuna.trial.FrozenTrial:
         key=lambda trial: 0.4 * scaled(trial.values[0], ci)
         + 0.6 * scaled(trial.values[1], rmst),
     )
+
+
+def _search_diagnostics(
+    study: optuna.Study, chosen: optuna.trial.FrozenTrial
+) -> dict:
+    """How much of the headline is the search picking a lucky trial.
+
+    Diagnostic only: it records what the search already computed and never
+    feeds back into selection.
+    """
+    completed = [t for t in study.trials if t.values is not None]
+    ci = np.array([t.values[0] for t in completed])
+    rmst = np.array([t.values[1] for t in completed])
+    return {
+        "n_completed_trials": len(completed),
+        "chosen_trial": chosen.number,
+        "chosen_values": [float(v) for v in chosen.values],
+        # 1 = the search picked the best trial on that objective.
+        "chosen_rank_ci": int((ci > chosen.values[0]).sum() + 1),
+        "chosen_rank_rmst": int((rmst > chosen.values[1]).sum() + 1),
+        "trial_ci": _spread(ci) | {"min": float(ci.min()), "max": float(ci.max())},
+        "trial_rmst": _spread(rmst)
+        | {"min": float(rmst.min()), "max": float(rmst.max())},
+        "pareto_front_size": len(study.best_trials),
+    }
 
 
 def _champion_dir() -> Path | None:
@@ -430,6 +463,7 @@ def run(
     result = {
         **prepare.evaluate_on_valid(model, valid_df, feature_names),
         "chosen_trial": chosen.number,
+        "search": _search_diagnostics(study, chosen),
         "seed_panel": panel,
         "elapsed_seconds": time.time() - started,
     }

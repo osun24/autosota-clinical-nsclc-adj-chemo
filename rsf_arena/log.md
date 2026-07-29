@@ -275,8 +275,53 @@ view of discrimination, and the trial-value spread quantifies the selection.
 7. *Both objectives.* Measurement-only again; a verdict of BETTER is not
    expected and would in fact be suspicious.
 
-- val_ci: PENDING RUN
-- val_rmst_diff: PENDING RUN
+- val_ci: 0.6979 ± 0.0239
+- val_rmst_diff: 7.35 ± 2.70 (months)
 - n_features: 19
-- verdict: PENDING RUN
-- one_line_lesson: PENDING RUN
+- verdict: NEUTRAL (measurement-only; both objectives bit-identical to iter_001)
+- one_line_lesson: The search hands back the argmax of 10 noisy RMST
+  evaluations, and that winner's 8.58 months shrinks to 7.36 on honest
+  re-estimation, so search-time trial values are inflated and must never be
+  quoted as results.
+
+**Diagnostics (added columns; neither objective replaced).**
+
+| quantity | value |
+|---|---|
+| OOB C-index (panel mean) | 0.6796 (sd 0.0009) |
+| validation C-index (panel mean) | 0.6979 |
+| optimism gap `val_ci - oob_ci` | **+0.0182** |
+| completed trials | 10 (Pareto front 3) |
+| chosen trial | 2, search values ci 0.6832 / rmst 8.5801 |
+| chosen trial rank | **1 of 10 on RMST**, 6 of 10 on C-index |
+| trial RMST across the search | mean 6.652, sd 1.455, min 4.624, max 8.580 |
+| trial C-index across the search | mean 0.6849, sd 0.0091, min 0.6728, max 0.6990 |
+
+**Findings.**
+1. Objectives are unchanged to the last digit, which is the correct outcome for
+   a measurement-only iteration and confirms the additions are inert.
+2. The selection bias is real and measurable. The compromise selector weights
+   RMST at 0.6, and it picked the trial ranked **first of ten on RMST**. Its
+   search-time RMST was 8.58; the same configuration honestly re-estimated by
+   the seed panel gives 7.36. That 1.2-month drop is winner's curse, visible
+   directly rather than inferred.
+3. Trial-to-trial RMST SD is 1.455 months with only 2 bootstraps per trial, so
+   the search is largely ranking noise. Taking the max of 10 such draws inflates
+   the expectation by roughly 1.5 SD, which is the same order as the observed
+   shrinkage.
+4. The OOB result cuts the other way and is reassuring: validation C-index
+   (0.6979) is *higher* than out-of-bag C-index on training rows (0.6796). The
+   model is not inflating its discrimination on validation; if anything the
+   validation cohort is the easier one to rank. Discrimination is therefore not
+   where the fragility lives — the RMST objective is.
+5. OOB C-index has sd 0.0009 across seeds, mirroring validation C-index. Both
+   confirm discrimination is a stable quantity in this setup.
+
+**Consequences for the loop.**
+- Search-time trial values are not results and are not quotable. Only
+  seed-panel re-estimates count.
+- More trials without more bootstraps per trial will make selection *worse*,
+  not better, because it deepens the max over a noisy ranking. Any PARAM
+  iteration that widens the search must raise `bootstrap_n` alongside it.
+- The C-index has little room to move and is stable; the loop's leverage, if
+  any exists, is on RMST.
