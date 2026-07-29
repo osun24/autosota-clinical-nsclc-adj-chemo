@@ -1345,3 +1345,45 @@ capped at 2000 (not the idea's stated 1500-3000 upper bound) after the 3000
 candidate triggered a background-task kill during this iteration's first
 attempt; retrying with a lower cap and explicit `del model` inside the sweep
 loop completed cleanly.
+
+---
+
+### iter_015 — validation-only permutation null for RMST alignment
+
+- type: CODE
+- idea_id: `permutation_null_rmst`
+- hypothesis: `val_rmst_diff`'s bootstrap SE (~2.6-2.7 months, established
+  since iter_001) already suggests the point estimate is not comfortably far
+  from zero; a direct permutation null — shuffle observed treatment labels
+  among validation patients while holding the model's recommendation fixed,
+  recompute `alignment_rmst_difference` many times — will give a formal
+  one-sided p-value against the null that observed treatment carries no
+  information correlated with the model's recommendation, closing the loop on
+  a question this log has carried informally since iter_001.
+- changed_files: `train.py`
+
+**Design.** For the primary (persisted) model's validation predictions:
+compute `observed = alignment_rmst_difference(valid_df, recommendation)`
+(identical call to the frozen evaluator). Then, 1000 times, permute the
+`Adjuvant Chemo` column among validation rows only (`recommendation` and all
+outcome columns held fixed) and recompute the same function, building a null
+distribution. Report the null mean/SD and the one-sided p-value
+`P(null >= observed)`. This uses validation rows only, touches no training
+data or model fitting, and calls the frozen `alignment_rmst_difference`
+unmodified — it does not replace `val_rmst_diff`, exactly the idea's stated
+admissibility ("additive diagnostic").
+
+**Red-line audit.** No new file reads (#1). Permutation is confined to
+validation-row treatment labels; nothing about fitting, IPTW, or the search
+is touched (#2). No rows dropped, only shuffled and restored (#3).
+`alignment_rmst_difference` called unmodified; `val_rmst_diff` itself is
+untouched, this is a new additive column (#4, the idea's explicit
+admissibility). Recommendation is computed once from the persisted model
+exactly as `evaluate_on_valid` already does, then held fixed through the
+permutation (#5). ACT stays binary (#6). Measurement-only (#7).
+
+- val_ci: PENDING RUN
+- val_rmst_diff: PENDING RUN
+- n_features: 19
+- verdict: PENDING RUN
+- one_line_lesson: PENDING RUN
