@@ -132,3 +132,61 @@ this entry's numbers become the reference for iter_002 onward.
   0.0239 and `val_rmst_diff` more than 2.70 months for BETTER. An RMST gain of
   1-2 months is inside seed-plus-sampling noise and is MIXED at best.
 - A gain that appears only after changing the reporting seed is not a gain.
+
+---
+
+### iter_002 — ensemble contrast recommendation
+
+- type: ALGO
+- idea_id: `recommendation_stability_forest`
+- hypothesis: Recommending from the seed panel's mean counterfactual contrast,
+  rather than from one forest's contrast, will stabilize the ~41 validation
+  patients who currently flip on seed alone and lift `val_rmst_diff` above the
+  single-forest expectation of 7.35 months.
+- changed_files: `train.py`
+
+**Why this idea.** iter_001 localized the RMST noise: 15.8% of validation
+patients receive a different recommendation depending only on the forest seed,
+and flipping a patient moves them between the aligned and unaligned KM curves.
+Averaging the contrast before thresholding is the direct fix, and the idea
+library clears it provided the final recommendation uses the prespecified mean
+contrast, which is what is implemented here.
+
+**Design (prespecified before running).**
+1. For each of the 10 panel seeds, store the counterfactual contrast
+   `risk(ACT=0) - risk(ACT=1)` per validation patient.
+2. Ensemble recommendation = ACT where the **mean** contrast across the panel
+   is positive. Ensemble risk for the C-index = mean risk across the panel.
+3. The ensemble is deterministic given the fixed seed panel, so its only
+   uncertainty is validation-row sampling; `se_total` = `se_boot` over the same
+   500 draws, using the same draw seed as iter_001 so the two are paired.
+4. The Optuna search is left untouched. Only the final recommendation rule
+   changes, so any movement is attributable to the rule.
+5. The single-seed keys stay in `result.json` and the frozen-evaluator
+   consistency check stays active.
+
+**Comparison basis.** iter_001 measured the expected performance of one
+randomly seeded forest (`val_ci` 0.6979 ± 0.0239, `val_rmst_diff` 7.35 ± 2.70).
+This iteration measures a deterministic ensemble policy. That is the honest
+comparison for choosing something deployable.
+
+**Red-line audit (before editing).**
+1. *Sealed test.* No new file reads. PASS.
+2. *No leakage.* All 10 panel forests fit on training rows only with IPTW fit
+   on training rows only. The ensemble averages predictions, never outcomes.
+   Row resampling remains post-hoc interval estimation. PASS.
+3. *Never drop censored patients.* Unchanged. PASS.
+4. *Metric definitions versioned.* `cindex` and `alignment_rmst_difference`
+   called unmodified at tau = 60. PASS.
+5. *Counterfactual recommendation.* Strengthened, not weakened: every patient
+   is still predicted under ACT=1 and ACT=0, and the lower-risk arm wins. No
+   within-arm regression on observed outcomes. PASS.
+6. *No regimen-level claims.* ACT stays binary. PASS.
+7. *Both objectives.* BETTER requires `val_ci` to gain more than 0.0239 and
+   `val_rmst_diff` more than 2.70 months against iter_001.
+
+- val_ci: PENDING RUN
+- val_rmst_diff: PENDING RUN
+- n_features: 19
+- verdict: PENDING RUN
+- one_line_lesson: PENDING RUN
