@@ -604,3 +604,71 @@ stays in the pipeline and will keep re-selecting the best training-ESS clip
 range on future runs, currently landing on (0.1, 5.0). Since neither objective
 cleared the BETTER threshold, iter_001's panel numbers (0.6979 ± 0.0239 /
 7.355 ± 2.70) remain the comparison point for future BETTER verdicts.
+
+---
+
+### iter_007 — prespecified clinical interaction expansion
+
+- type: ALGO
+- idea_id: `clinical_interaction_expansion`
+- hypothesis: RSF splits on individual covariates already capture some
+  interactions implicitly, but a small, prespecified, clinically motivated set
+  of covariate-by-ACT and covariate-by-covariate product terms will make known
+  treatment-effect modifiers (stage, histology, age, sex) available to the
+  forest as single splits rather than requiring multiple correlated splits to
+  approximate, improving `val_rmst_diff` beyond the 7.355 ± 2.70 standing
+  baseline without degrading `val_ci`.
+- changed_files: `prepare.py`, `train.py`
+
+**Why this idea, and why now.** Six iterations of measurement (seed panel,
+OOB gap, search diagnostics, IPTW ESS, clip sweep) established that
+discrimination is stable and search noise/weighting were not the bottleneck.
+No ALGO idea besides `recommendation_stability_forest` (iter_002, refuted) has
+been tried. This is the first iteration to change what the forest sees.
+
+**Design (prespecified before running — fixed budget of 6 terms).**
+1. `ACT_x_Age` = Adjuvant Chemo × Age
+2. `ACT_x_StageIII` = Adjuvant Chemo × Stage_III (stage is the standard
+   adjuvant-chemo-benefit modifier in NSCLC)
+3. `ACT_x_Adenocarcinoma` = Adjuvant Chemo × Histology_Adenocarcinoma
+4. `ACT_x_Male` = Adjuvant Chemo × IS_MALE
+5. `Age_x_StageIII` = Age × Stage_III (prognostic, not treatment-specific)
+6. `Age_x_Smoked_Yes` = Age × Smoked?_Yes (prognostic)
+Hierarchical: every term is a product of two columns that remain in the
+feature set as main effects, so the forest can still use either main effect
+alone. `n_features` goes from 19 to 25 (+31%), a fixed, small expansion.
+`prepare.add_interaction_terms` recomputes all six from the *current* value of
+`Adjuvant Chemo` and is called unconditionally inside
+`prepare.build_matrix_from_feature_names`, so every caller — the seed panel,
+the Optuna objective, `prepare.evaluate_on_valid`, and the human-only
+finalizer's sealed-test path — automatically gets correct counterfactual
+interaction values when `Adjuvant Chemo` is flipped to 0 or 1. Interaction
+terms are NOT added to `pretreatment_columns` (the IPTW propensity model's
+covariates), since `ACT_x_*` terms are functions of the treatment itself and
+have no place predicting it.
+
+**Red-line audit.**
+1. *Sealed test.* No new file reads; interaction terms are pure column
+   arithmetic on already-loaded frames. PASS.
+2. *No leakage.* Interaction terms are deterministic products of raw
+   covariates already present in every split (train, validation, and — for
+   the human-only finalizer — test); nothing is fit on any data, so there is
+   no train/validation information flow to leak. PASS.
+3. *Never drop censored patients.* Unaffected — this only adds columns.
+   PASS.
+4. *Metric definitions versioned.* Objectives untouched. PASS.
+5. *Counterfactual recommendation.* Preserved and, by design, sharpened:
+   `ACT_x_*` terms are recomputed under both ACT=1 and ACT=0 counterfactuals
+   because `build_matrix_from_feature_names` recomputes them from the current
+   `Adjuvant Chemo` value on every call — the exact mechanism that makes the
+   feature set counterfactual-consistent rather than stale. PASS.
+6. *No regimen-level claims.* ACT stays binary throughout; no regimen
+   information is introduced. PASS.
+7. *Both objectives.* BETTER needs `val_ci` > +0.0239 and `val_rmst_diff` >
+   +2.70 months against iter_001's standing 0.6979 / 7.355.
+
+- val_ci: PENDING RUN
+- val_rmst_diff: PENDING RUN
+- n_features: PENDING RUN
+- verdict: PENDING RUN
+- one_line_lesson: PENDING RUN
