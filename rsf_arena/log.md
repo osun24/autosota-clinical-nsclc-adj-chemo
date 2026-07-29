@@ -548,8 +548,59 @@ this iteration varies only the weight clip. The selection never looks at
    +2.70 months against iter_001's 0.6979 / 7.355 — the standing comparison
    point, since search settings don't change what "current best" means.
 
-- val_ci: PENDING RUN
-- val_rmst_diff: PENDING RUN
+- val_ci: 0.6992 ± 0.0239
+- val_rmst_diff: 7.37 ± 2.64 (months)
 - n_features: 19
-- verdict: PENDING RUN
-- one_line_lesson: PENDING RUN
+- verdict: MIXED (both objectives nominally flat-to-up, neither clears the
+  BETTER threshold)
+- one_line_lesson: Tightening the weight clip to (0.1, 5.0) lifted training
+  ESS by 11% (496 to 551 of 775) with both objectives unchanged within noise —
+  the OBS-arm clip-ceiling patients found in iter_005 were a weighting
+  efficiency issue, not a source of estimation bias large enough to show up in
+  either objective.
+
+**Clip candidates (training-only ESS, selection made before any validation
+metric was computed).**
+
+| w_clip | overall ESS | ACT ESS | OBS ESS | OBS max weight |
+|---|---|---|---|---|
+| (0.1, 5.0) | **550.6** | 89.5 | 522.0 | 5.0 (capped) |
+| (0.1, 10.0) [prior default] | 496.4 | 89.5 | 470.9 | 10.0 (capped) |
+| (0.1, 20.0) | 463.7 | 89.5 | 440.0 | 16.76 |
+| (0.05, 10.0) | 496.4 | 89.5 | 470.9 | 10.0 (capped) |
+
+Selected: **(0.1, 5.0)**, the argmax of overall training ESS.
+
+**Result vs iter_001 (standing comparison point).**
+
+| objective | iter_001 panel | iter_006 panel | delta | BETTER needs |
+|---|---|---|---|---|
+| val_ci | 0.6979 ± 0.0239 | 0.6992 ± 0.0239 | +0.0013 | > +0.0239 |
+| val_rmst_diff | 7.355 ± 2.702 | 7.365 ± 2.638 | +0.01 | > +2.70 |
+
+**Findings.**
+1. ACT-arm ESS is identical across every candidate (89.5) — the ACT propensity
+   distribution never approaches the clip boundary, consistent with iter_005's
+   finding that ACT weights sit well inside [0.155, 0.977]. All of the
+   sensitivity is in the OBS arm.
+2. Narrowing the OBS-arm clip from 10.0 to 5.0 recovers ESS by capping more
+   patients' weight, but at a *lower* cap — i.e., more patients get bounded,
+   but each bound is less extreme, and net variance of the weight
+   distribution drops enough to raise ESS. Widening to 20.0 does the opposite:
+   fewer patients are capped, but the ones that are get weighted more
+   extremely, lowering ESS.
+3. Despite an 11% ESS gain, neither objective moved outside noise. The
+   patients whose weights change most under tighter clipping are exactly the
+   ones the propensity model was already least confident about, and RSF with
+   IPTW sample weights appears robust to that specific reweighting range on
+   this cohort.
+4. This is a genuine, if small, efficiency win with no detected downside:
+   tighter clipping trades a small amount of estimand fidelity (more patients
+   pinned at the cap) for less variance in the weighted training objective,
+   and the objectives confirm no harm.
+
+**Disposition.** Adopted as the new default going forward — `select_iptw_clip`
+stays in the pipeline and will keep re-selecting the best training-ESS clip
+range on future runs, currently landing on (0.1, 5.0). Since neither objective
+cleared the BETTER threshold, iter_001's panel numbers (0.6979 ± 0.0239 /
+7.355 ± 2.70) remain the comparison point for future BETTER verdicts.

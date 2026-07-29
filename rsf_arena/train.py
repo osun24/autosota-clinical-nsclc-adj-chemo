@@ -100,8 +100,11 @@ def fit_model_from_metadata(
         if refit_train_valid
         else train_df
     )
+    w_clip = tuple(metadata.get("iptw_w_clip", DEFAULT_W_CLIP))
     weights, _, _ = prepare.compute_iptw(
-        fit_df, covariate_cols=list(metadata["pretreatment_columns"])
+        fit_df,
+        covariate_cols=list(metadata["pretreatment_columns"]),
+        w_clip=w_clip,
     )
     model = make_rsf(**dict(metadata["rsf_params"]))
     model.fit(
@@ -203,6 +206,32 @@ def iptw_diagnostics(
     return report
 
 
+# Weight-clip candidates for iptw_clip_sweep. Selection uses training-only
+# ESS, never validation, per the idea's admissibility restriction.
+CANDIDATE_W_CLIPS: tuple[tuple[float, float], ...] = (
+    (0.1, 5.0),
+    (0.1, 10.0),
+    (0.1, 20.0),
+    (0.05, 10.0),
+)
+DEFAULT_W_CLIP = (0.1, 10.0)
+
+
+def select_iptw_clip(
+    train_df: pd.DataFrame, pretreatment_columns: list[str]
+) -> tuple[tuple[float, float], list[dict]]:
+    """Pick a weight-clip range from training-only ESS, never validation."""
+    scored = []
+    for w_clip in CANDIDATE_W_CLIPS:
+        weights, _, _ = prepare.compute_iptw(
+            train_df, covariate_cols=pretreatment_columns, w_clip=w_clip
+        )
+        diag = iptw_diagnostics(train_df, weights)
+        scored.append({"w_clip": list(w_clip), **diag})
+    best = max(scored, key=lambda row: row["ess"])
+    return tuple(best["w_clip"]), scored
+
+
 def seed_panel_report(
     metadata: dict,
     train_df: pd.DataFrame,
@@ -217,8 +246,11 @@ def seed_panel_report(
     metric and never informs fitting or model selection.
     """
     feature_names = list(metadata["feature_names"])
+    w_clip = tuple(metadata.get("iptw_w_clip", DEFAULT_W_CLIP))
     weights, _, _ = prepare.compute_iptw(
-        train_df, covariate_cols=list(metadata["pretreatment_columns"])
+        train_df,
+        covariate_cols=list(metadata["pretreatment_columns"]),
+        w_clip=w_clip,
     )
     matrix = prepare.build_matrix_from_feature_names(train_df, feature_names)
     outcome = _outcome(train_df)
@@ -474,6 +506,9 @@ def run(
         train_df, valid_df
     )
     feature_names = clinical_columns
+    chosen_w_clip, clip_candidates = select_iptw_clip(
+        train_df, pretreatment_columns
+    )
 
     def objective(trial: optuna.Trial) -> tuple[float, float]:
         params = _suggest_params(trial)
@@ -485,7 +520,9 @@ def run(
                 require_two_arms=True,
             )
             weights, _, _ = prepare.compute_iptw(
-                sample, covariate_cols=pretreatment_columns
+                sample,
+                covariate_cols=pretreatment_columns,
+                w_clip=chosen_w_clip,
             )
             model = make_rsf(**params)
             model.fit(
@@ -515,12 +552,14 @@ def run(
         "pretreatment_columns": pretreatment_columns,
         "feature_names": feature_names,
         "rsf_params": params,
+        "iptw_w_clip": list(chosen_w_clip),
     }
     panel, model = seed_panel_report(metadata, train_df, valid_df)
     result = {
         **prepare.evaluate_on_valid(model, valid_df, feature_names),
         "chosen_trial": chosen.number,
         "search": _search_diagnostics(study, chosen),
+        "iptw_clip_candidates": clip_candidates,
         "seed_panel": panel,
         "elapsed_seconds": time.time() - started,
     }
