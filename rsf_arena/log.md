@@ -1200,3 +1200,41 @@ with human review, not further autonomous iteration in the remaining budget.
 `s_t_ensemble_sweep` is retained in the codebase as a diagnostic comparison
 function for that future work; it is not called from any path that affects
 the persisted model or headline metrics.
+
+---
+
+### iter_013 — run artifact manifest (hashed provenance)
+
+- type: CODE
+- idea_id: `artifact_manifest`
+- hypothesis: Twelve iterations in, run directories record results but not a
+  compact, hashable fingerprint of what produced them; adding a manifest with
+  hashes of the feature list, forest parameters, and data schema, plus an
+  explicit metric-definition version string, will make it possible to detect
+  silent drift (e.g., an accidental change to `CLINICAL_VARS` or the frozen
+  metric functions) across future iterations without re-reading full JSON
+  diffs.
+- changed_files: `train.py`
+
+**Design.** `build_manifest(metadata, train_df, valid_df)` computes SHA-256
+hashes of: (1) the sorted feature name list, (2) `rsf_params` as canonical
+JSON, (3) the training/validation frame's column names and dtypes (schema,
+not data values), plus a fixed `metric_version` string documenting the frozen
+metric definitions (`concordance_index_censored`; `restricted_mean_survival_
+time`, tau=60) and the current git commit hash if available. Written to
+`run_dir/manifest.json` alongside the existing artifacts. Read-only with
+respect to data and model — it hashes already-computed objects.
+
+**Red-line audit.** No new file reads beyond `git rev-parse HEAD` (repository
+metadata, not analysis data) (#1). Hashing is read-only and touches no
+fitting, weighting, or selection (#2). No rows touched (#3). Metric
+definitions are not altered; `metric_version` records the two frozen
+definitions verbatim rather than changing them (#4). Recommendation rule
+untouched (#5). ACT stays binary (#6). Provenance-only; no verdict beyond
+NEUTRAL expected (#7).
+
+- val_ci: PENDING RUN
+- val_rmst_diff: PENDING RUN
+- n_features: 19
+- verdict: PENDING RUN
+- one_line_lesson: PENDING RUN
