@@ -425,6 +425,64 @@ def seed_panel_report(
     return report, primary_model
 
 
+DEPTH_SWEEP_CANDIDATES: tuple[int | None, ...] = (3, 4, 5, 6, 7, 8, 9, 10, None)
+DEPTH_SWEEP_BASE_PARAMS = {
+    "n_estimators": 700,
+    "min_samples_leaf": 15,
+    "min_samples_split": 37,
+    "max_features": 0.7,
+    "n_jobs": -1,
+}
+
+
+def depth_sweep(
+    metadata: dict, train_df: pd.DataFrame, valid_df: pd.DataFrame
+) -> list[dict]:
+    """Seed-panel depth comparison, holding every other param fixed.
+
+    Read-only diagnostic sweep: does not touch `_suggest_params`, the Optuna
+    search space, or which model gets persisted. Isolates depth from the
+    search-selection noise documented in iter_003 and iter_009. Skips the
+    validation-row bootstrap (irrelevant to comparing depths against a fixed
+    validation set) and reports only the panel mean and seed spread.
+    """
+    feature_names = list(metadata["feature_names"])
+    w_clip = tuple(metadata.get("iptw_w_clip", DEFAULT_W_CLIP))
+    weights, _, _ = prepare.compute_iptw(
+        train_df,
+        covariate_cols=list(metadata["pretreatment_columns"]),
+        w_clip=w_clip,
+    )
+    matrix = prepare.build_matrix_from_feature_names(train_df, feature_names)
+    outcome = _outcome(train_df)
+
+    rows = []
+    for depth in DEPTH_SWEEP_CANDIDATES:
+        params = {**DEPTH_SWEEP_BASE_PARAMS, "max_depth": depth}
+        panel_ci, panel_rmst = [], []
+        for seed in SEED_PANEL:
+            model = make_rsf(**params, random_state=seed)
+            model.fit(matrix, outcome, sample_weight=weights)
+            risk, recommendation, _ = _valid_predictions(
+                model, valid_df, feature_names
+            )
+            val_ci, val_rmst_diff = _metric_pair(valid_df, risk, recommendation)
+            panel_ci.append(val_ci)
+            panel_rmst.append(val_rmst_diff)
+        panel_ci = np.array(panel_ci)
+        panel_rmst = np.array(panel_rmst)
+        rows.append(
+            {
+                "max_depth": depth,
+                "val_ci": float(panel_ci.mean()),
+                "val_ci_sd_seed": float(panel_ci.std(ddof=1)),
+                "val_rmst_diff": float(panel_rmst.mean()),
+                "val_rmst_diff_sd_seed": float(panel_rmst.std(ddof=1)),
+            }
+        )
+    return rows
+
+
 def _select_compromise(study: optuna.Study) -> optuna.trial.FrozenTrial:
     candidates = study.best_trials or [
         trial for trial in study.trials if trial.values is not None
@@ -607,6 +665,7 @@ def run(
         "feature_importance": feature_importance_diagnostic(
             model, valid_df, feature_names
         ),
+        "depth_sweep": depth_sweep(metadata, train_df, valid_df),
         "elapsed_seconds": time.time() - started,
     }
     # The panel's first seed is the persisted model, so its metrics must match

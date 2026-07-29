@@ -941,8 +941,62 @@ not update `metadata["rsf_params"]` or the persisted model, so it cannot by
 itself produce a BETTER/WORSE verdict on the run's headline numbers; those
 stay whatever the unmodified search+panel produces this iteration (#7).
 
-- val_ci: PENDING RUN
-- val_rmst_diff: PENDING RUN
+- val_ci: 0.6992 ± 0.0239
+- val_rmst_diff: 7.37 ± 2.64 (months)
 - n_features: 19
-- verdict: PENDING RUN
-- one_line_lesson: PENDING RUN
+- verdict: NEUTRAL on the headline run (search/panel unchanged, deltas vs
+  iter_001 negligible: +0.0013 ci, +0.01 rmst); sweep finding below is the
+  substantive result of this iteration
+- one_line_lesson: `max_depth=3` is a clear, reproducible loser — RMST collapses
+  to 4.57 months (vs 7.3-8.5 for depth 4 through unrestricted) with roughly
+  double the seed variance — while depth 4 through unrestricted are all
+  statistically indistinguishable from each other, and deeper/unrestricted
+  trees give *more* seed-stable RMST than moderate depths, not less.
+
+**Depth sweep (fixed leaf=15, split=37, mtry=0.7, n_estimators=700; sd_seed
+column is seed-panel spread, not the validation-sampling SE).**
+
+| max_depth | val_ci | ci sd_seed | val_rmst_diff | rmst sd_seed |
+|---|---|---|---|---|
+| 3 | 0.6967 | 0.0013 | **4.566** | 2.364 |
+| 4 | 0.6965 | 0.0008 | 8.158 | 1.375 |
+| 5 | 0.6955 | 0.0015 | 8.024 | 1.049 |
+| 6 | 0.6935 | 0.0014 | 7.274 | 1.654 |
+| 7 | 0.6939 | 0.0017 | 8.303 | 1.254 |
+| 8 | 0.6933 | 0.0011 | 8.278 | 1.243 |
+| 9 | 0.6934 | 0.0010 | **8.543** | 1.118 |
+| 10 | 0.6935 | 0.0011 | 8.289 | **0.952** |
+| None | 0.6935 | 0.0010 | 8.400 | **0.779** |
+
+**Findings.**
+1. This sweep has none of the noise problems that plagued the search-based
+   comparisons (iter_003, iter_009) — `sd_seed` for `val_ci` is 0.0008-0.0017
+   across the whole sweep, and even RMST's seed spread (0.78-2.36) is small
+   enough that depth=3's isolation is unambiguous, not a noisy artifact.
+2. `max_depth=3` is dominated on both axes simultaneously: worst RMST by a
+   wide margin and among the highest seed variance. Trees this shallow appear
+   too coarse to place the ACT-vs-OBS decision boundary consistently.
+   Reassuringly, the current search space (`[None, 4, 6, 8, 12]`) never
+   included 3, so this wasn't already contaminating any prior iteration.
+3. Among depth 4 through unrestricted, `val_ci` is flat (0.6933-0.6965, a
+   0.0032 band inside a single seed-sd) and `val_rmst_diff` clusters in
+   7.27-8.54 with no monotonic trend — depth 6 (already in the search space)
+   is the weakest of this group on RMST (7.274) while depth 9 and unrestricted
+   are the strongest, but none of these differences clear even one `se_boot`
+   (2.6-2.8 months), so this is a mild, not decisive, preference.
+4. The seed-stability trend is the more interesting result: `rmst sd_seed`
+   falls roughly monotonically from depth 4 (1.375) to unrestricted (0.779).
+   Deeper trees give more reproducible RMST estimates, not less — the
+   opposite of the usual intuition that deeper trees overfit and add
+   variance. A plausible reason: shallower trees produce coarser terminal
+   nodes, so a small perturbation (forest seed) more easily flips which side
+   of a node's average risk a given patient falls on, and that flip is exactly
+   what drives `val_rmst_diff` variance (iter_001, iter_002).
+
+**Disposition.** Diagnostic-only; `_suggest_params`, the search space, and the
+persisted model are unchanged, so no BETTER/WORSE verdict applies to the
+sweep itself. Recommendation for future PARAM iterations: depth 3 is now
+confirmed out of scope (already excluded); if `max_depth`'s search grid is
+revisited, dropping 6 in favor of 9 or leaning more on `None` is mildly
+supported but not urgent, since the whole depth-4-to-unrestricted band is
+statistically indistinguishable given current validation-set noise.
