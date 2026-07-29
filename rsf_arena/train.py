@@ -27,6 +27,8 @@ optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 ARENA_DIR = Path(__file__).resolve().parent
 RUNS_DIR = ARENA_DIR / "runs"
+# Names the run directory whose forest pickle is worth keeping on disk.
+BEST_POINTER = RUNS_DIR / "best_run.txt"
 DEFAULT_N_TRIALS = int(os.environ.get("RSF_ARENA_N_TRIALS", "10"))
 DEFAULT_BOOTSTRAPS = int(os.environ.get("RSF_ARENA_BOOTSTRAPS", "2"))
 
@@ -259,6 +261,40 @@ def _select_compromise(study: optuna.Study) -> optuna.trial.FrozenTrial:
     )
 
 
+def _champion_dir() -> Path | None:
+    """Run directory currently holding the best-iteration model, if any."""
+    if not BEST_POINTER.exists():
+        return None
+    name = BEST_POINTER.read_text().strip()
+    candidate = RUNS_DIR / name
+    return candidate if candidate.is_dir() else None
+
+
+def prune_run_pickles(keep: set[Path]) -> list[str]:
+    """Delete every forest pickle except the ones in `keep`.
+
+    Each pickle is roughly 350 MB, so only the best iteration's model is worth
+    retaining. JSON metadata and results are small and are always kept, so the
+    provenance of every run survives pruning.
+    """
+    resolved = {path.resolve() for path in keep}
+    removed = []
+    for pickle_path in sorted(RUNS_DIR.glob("run_*/rsf_model.pkl")):
+        if pickle_path.parent.resolve() not in resolved:
+            pickle_path.unlink()
+            removed.append(pickle_path.parent.name)
+    return removed
+
+
+def promote_best(run_dir: str | Path) -> list[str]:
+    """Mark a run as the best iteration and drop every other pickle."""
+    run_path = RUNS_DIR / Path(run_dir).name
+    if not (run_path / "rsf_model.pkl").exists():
+        raise FileNotFoundError(f"No retained model pickle in {run_path}")
+    BEST_POINTER.write_text(run_path.name + "\n")
+    return prune_run_pickles({run_path})
+
+
 def _save_artifacts(
     result: dict,
     model: RandomSurvivalForest,
@@ -278,6 +314,13 @@ def _save_artifacts(
     (run_dir / "result.json").write_text(
         json.dumps(result, indent=2, sort_keys=True) + "\n"
     )
+    # Retain only this run's model and the reigning champion's; the verdict
+    # that decides which one survives is recorded in log.md afterwards.
+    keep = {run_dir}
+    champion = _champion_dir()
+    if champion is not None:
+        keep.add(champion)
+    result["pruned_pickles"] = prune_run_pickles(keep)
     return run_dir
 
 
