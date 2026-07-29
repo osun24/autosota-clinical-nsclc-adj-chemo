@@ -505,7 +505,7 @@ def run(
     clinical_columns, pretreatment_columns = prepare.clinical_columns(
         train_df, valid_df
     )
-    feature_names = clinical_columns
+    feature_names = clinical_columns + list(prepare.INTERACTION_TERMS)
     chosen_w_clip, clip_candidates = select_iptw_clip(
         train_df, pretreatment_columns
     )

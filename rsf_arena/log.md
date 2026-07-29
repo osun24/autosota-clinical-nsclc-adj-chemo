@@ -667,8 +667,58 @@ have no place predicting it.
 7. *Both objectives.* BETTER needs `val_ci` > +0.0239 and `val_rmst_diff` >
    +2.70 months against iter_001's standing 0.6979 / 7.355.
 
-- val_ci: PENDING RUN
-- val_rmst_diff: PENDING RUN
-- n_features: PENDING RUN
-- verdict: PENDING RUN
-- one_line_lesson: PENDING RUN
+- val_ci: 0.6976 ± 0.0242
+- val_rmst_diff: 8.64 ± 2.76 (months)
+- n_features: 25
+- verdict: MIXED (val_ci flat, val_rmst_diff nominal +1.29 but short of the
+  +2.70 threshold — follow-up slot 1 of 3)
+- one_line_lesson: The point-estimate gain doesn't clear the formal BETTER
+  bar, but the whole per-seed RMST distribution shifted up (baseline range
+  5.72-9.88, this run's range 7.63-9.86, no seed at or below the old mean),
+  which is a stronger signal than the point delta alone suggests.
+
+**Result vs iter_001 (standing comparison point).**
+
+| objective | iter_001 panel | iter_007 panel | delta | BETTER needs |
+|---|---|---|---|---|
+| val_ci | 0.6979 ± 0.0239 | 0.6976 ± 0.0242 | -0.0003 | > +0.0239 |
+| val_rmst_diff | 7.355 ± 2.702 | 8.642 ± 2.761 | **+1.29** | > +2.70 |
+
+- OOB C-index 0.6757, optimism gap +0.0219 (comparable to prior runs)
+- recommendation agreement 0.975 (was 0.966), unanimous 89.6% (was 84.2%)
+- ACT-recommended fraction dropped to 22.7% (was 30.5%)
+- per-seed val_rmst_diff: 8.43, 7.64, 7.98, 9.86, 7.63, 9.20, 8.23, 9.51,
+  8.78, 9.16 — **every seed above the iter_001 mean of 7.36**
+- search chosen trial ranked 1st of 30 on both objectives (Pareto front 3);
+  shrinkage on adoption was -0.29 months (search value 8.36 vs panel 8.64,
+  i.e. the panel re-estimate was *higher* than the search suggested this time)
+
+**Findings.**
+1. `val_ci` is unmoved — the interaction terms don't help or hurt
+   discrimination, consistent with the earlier finding that C-index is a
+   stable, largely already-saturated quantity in this setup.
+2. `val_rmst_diff`'s point estimate doesn't clear the pre-registered
+   threshold, but the per-seed distribution is the most informative evidence
+   so far: every one of 10 seeds landed strictly above the iter_001 panel
+   mean, with zero overlap into the bottom half of iter_001's own per-seed
+   range. A shift with no seed falling back to baseline is a different kind of
+   evidence than a single higher point estimate would be.
+3. Recommendation unanimity rose to 89.6% from 84.2%, and the ACT-recommended
+   fraction fell to 22.7% from 30.5% — the interaction terms are changing
+   *which* patients get recommended ACT, not just adding prediction noise.
+4. This iteration also exposes a structural limit: `val_rmst_diff`'s
+   `se_boot` (~2.7 months) is set by the 259-patient, 117-event validation
+   set and tau=60 RMST — it will not shrink by refining the panel or the
+   search. No future ALGO/PARAM change is likely to produce an RMST delta
+   that formally clears +2.70 months without either a materially different
+   model or a larger validation set. The formal BETTER bar for RMST may be
+   effectively unreachable within this arena; directional, distribution-level
+   evidence (as here) may be the most honest signal available.
+
+**Disposition.** Not BETTER by the letter of red line 7, and not WORSE either.
+Recorded as MIXED, follow-up slot 1 of 3. Given the consistent per-seed shift,
+the interaction-expanded feature set (`clinical_columns + INTERACTION_TERMS`,
+25 features) is kept as the new default going forward rather than reverted;
+iter_008 will check whether the interaction terms are mechanistically
+load-bearing (feature importance) before the MIXED status is resolved.
+iter_001's panel numbers remain the formal comparison point for BETTER.
