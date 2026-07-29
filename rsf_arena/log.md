@@ -1382,8 +1382,112 @@ admissibility). Recommendation is computed once from the persisted model
 exactly as `evaluate_on_valid` already does, then held fixed through the
 permutation (#5). ACT stays binary (#6). Measurement-only (#7).
 
-- val_ci: PENDING RUN
-- val_rmst_diff: PENDING RUN
+- val_ci: 0.6992 ± 0.0239
+- val_rmst_diff: 7.37 ± 2.64 (months)
 - n_features: 19
-- verdict: PENDING RUN
-- one_line_lesson: PENDING RUN
+- verdict: NEUTRAL on the headline (unchanged, diagnostic-only); the
+  permutation-null result below is the substantive finding
+- one_line_lesson: Against an honest validation-only null, the observed
+  `val_rmst_diff` (8.057, this run's primary-model recommendation) is not
+  distinguishable from chance (p=0.172, one-sided) — and the null itself is
+  not centered at zero (mean 6.31), because holding a risk-informed
+  recommendation fixed while permuting treatment still produces a
+  compositional RMST gap unrelated to any true treatment-alignment signal.
+
+**Permutation null (1000 draws, primary model's recommendation held fixed,
+treatment labels shuffled among validation rows only).**
+
+| | value |
+|---|---|
+| observed `val_rmst_diff` | 8.057 |
+| null mean | **6.311** |
+| null SD | 1.848 |
+| null 5th-95th percentile | 3.39 to 9.33 |
+| one-sided p-value (P(null ≥ observed)) | **0.172** |
+
+**Findings.**
+1. The null is not centered at zero, and this is itself informative rather
+   than a bug. `alignment_rmst_difference` splits validation patients into
+   "aligned" and "unaligned" groups using the model's *fixed* recommendation
+   (roughly 30% ACT-recommended) crossed with a *randomized* treatment label.
+   Because the recommendation split is fixed and risk-informed (the forest's
+   prognostic ranking, established stable since iter_001/iter_003), the
+   resulting aligned/unaligned groups differ systematically in composition
+   even when treatment carries zero information — the permutation null
+   absorbs the model's prognostic sorting power, not just sampling noise.
+   6.31 months is the size of that baseline compositional effect on this
+   validation set.
+2. The observed value (8.057) exceeds the null mean by only 1.75 months,
+   under one null SD (1.848). 17.2% of purely-random treatment permutations
+   produce an alignment RMST gap at least this large. That is not evidence
+   of a real treatment-alignment signal at any conventional significance
+   threshold.
+3. This reframes every RMST point estimate logged across this arena's 15
+   iterations. `val_rmst_diff` has consistently sat around 7-8.7 months
+   across every configuration tried (iter_001 through iter_014), and that
+   consistency was previously read as encouraging stability. This permutation
+   test shows a meaningful share of that consistent positive number is
+   attributable to the recommendation's fixed prognostic composition, not to
+   the model correctly identifying which patients benefit from ACT. The two
+   effects are entangled in `alignment_rmst_difference` by construction and
+   cannot be separated by point estimate or bootstrap SE alone — only a
+   permutation null exposes it.
+4. This is consistent with, and now gives a quantitative backbone to,
+   iter_008's finding that the `ACT_x_*` treatment-interaction terms were
+   inert while a purely prognostic term (`Age_x_StageIII`) was load-bearing:
+   this whole pipeline's RMST movement has repeatedly traced back to
+   prognostic (risk-ranking) improvements, not treatment-effect-modifier
+   discovery, and this iteration is the first to show that even the
+   *headline* RMST number cannot statistically rule out being driven by
+   prognosis alone.
+
+**Disposition.** Adopted as a permanent diagnostic (`permutation_null_rmst`,
+1000 draws, cheap — a few seconds). `val_rmst_diff` remains the frozen
+objective per red line 4; this does not replace it, but any future BETTER
+claim on RMST should be read alongside this null, not just the bootstrap SE.
+Recommend this null be recomputed and reported at human-only finalization
+time (`finalize-rsf.py`) as well, so the sealed-test RMST claim carries the
+same caveat.
+
+---
+
+## 15-iteration arc: closing summary
+
+**Standing champion:** iter_001's model remains the only artifact kept
+(`runs/best_run.txt` points to `run_20260728_165716`). `val_ci` = 0.6979 ±
+0.0239, `val_rmst_diff` = 7.355 ± 2.702, 19 features. No candidate across 14
+follow-up iterations cleared red line 7's BETTER bar (gain beyond bootstrap
+SE on *both* objectives simultaneously) — the closest was iter_012's S+T
+ensemble at +1.31 months of nominal RMST gain, still under the +2.70
+threshold and withheld from adoption on mechanism grounds regardless.
+
+**What held up:** `val_ci` (discrimination) was stable across every
+configuration tried (0.693-0.701 the whole way through, seed-sd typically
+under 0.002) and corroborated by an independent estimator (Uno's IPCW C,
+iter_011) and an OOB estimate (iter_003) that never contradicted it. The
+IPTW weighting (iter_005-006) was sound, with one useful efficiency gain
+(tighter clip, +11% ESS, adopted). The measurement infrastructure built in
+iter_001 (seed panel, bootstrap SE) is what made every subsequent comparison
+honest rather than a single lucky seed.
+
+**What didn't hold up:** `val_rmst_diff` never became trustworthy in the way
+`val_ci` did. iter_003 showed the Optuna search itself manufactures ~1-2
+months of winner's-curse inflation on RMST specifically. iter_007-009 showed
+a promising interaction-expansion result (+1.29 months) evaporated to +0.39
+when trimmed to the features permutation importance said were load-bearing —
+the RMST metric moves by amounts comparable to search-configuration noise,
+not just seed noise. iter_015 closes the arc by showing the number can't be
+distinguished from a compositional null at all.
+
+**Genuine open lead, flagged for human review, not further autonomous
+iteration:** iter_012's S+T contrast ensemble cut RMST seed-variance by more
+than half while nominally raising the mean, but does so by handing a
+114-patient T-learner arm-model equal vote against the well-supported
+S-learner, and it shifts ~1 in 6 patients' treatment recommendation. That
+mechanism concern, not the metric, is why it wasn't adopted.
+
+**What's on disk:** one retained model pickle (iter_001's, ~350MB, pointed to
+by `runs/best_run.txt`); every other run kept its JSON metadata/result/
+manifest but had its pickle pruned per the retention policy set at the start
+of this session. `log.md` carries the full audit trail — idea, red-line
+check, and result — for all 15 iterations.

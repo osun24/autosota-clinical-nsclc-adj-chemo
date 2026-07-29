@@ -1,0 +1,10 @@
+{
+  "feature_names_hash": "ce15de3ef217a337aaddd34cce4930292813def58eaa964bfa3c2cca69a23e89",
+  "git_commit": "fc6afe961bf1324a514d8959caa843bafc1c553b",
+  "metric_version": "val_ci=sksurv.metrics.concordance_index_censored (Harrell's C); val_rmst_diff=lifelines.utils.restricted_mean_survival_time, tau=60",
+  "n_train": 775,
+  "n_valid": 259,
+  "rsf_params_hash": "7b44104c46f86a9e1f2ebbdd785a050e2548859aabdc548344ae2511af3ce7f9",
+  "train_schema_hash": "7ca6fa6d5b7e49d286d6ca8dbd39166a05343f9c4eb95381c38b7fb4322a71f8",
+  "valid_schema_hash": "7ca6fa6d5b7e49d286d6ca8dbd39166a05343f9c4eb95381c38b7fb4322a71f8"
+}

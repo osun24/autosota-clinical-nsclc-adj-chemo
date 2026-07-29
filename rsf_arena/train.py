@@ -636,6 +636,45 @@ def n_estimators_sweep(
     )
 
 
+PERMUTATION_NULL_DRAWS = 1000
+PERMUTATION_NULL_SEED = 20260728
+
+
+def permutation_null_rmst(
+    valid_df: pd.DataFrame,
+    recommendation: np.ndarray,
+    n_draws: int = PERMUTATION_NULL_DRAWS,
+    seed: int = PERMUTATION_NULL_SEED,
+) -> dict:
+    """Validation-only treatment-label permutation null for RMST alignment.
+
+    Shuffles observed treatment among validation rows (recommendation held
+    fixed) to ask how large `val_rmst_diff` would look if treatment carried no
+    information correlated with the model's recommendation. Uses only
+    validation rows and the frozen `alignment_rmst_difference`; touches no
+    training data, fitting, or the recommendation itself.
+    """
+    observed = prepare.alignment_rmst_difference(valid_df, recommendation)
+    treatment = valid_df["Adjuvant Chemo"].to_numpy(int).copy()
+    rng = np.random.default_rng(seed)
+    shuffled_df = valid_df.copy()
+    null_values = np.empty(n_draws)
+    for i in range(n_draws):
+        shuffled_df["Adjuvant Chemo"] = rng.permutation(treatment)
+        null_values[i] = prepare.alignment_rmst_difference(
+            shuffled_df, recommendation
+        )
+    return {
+        "observed": float(observed),
+        "n_draws": n_draws,
+        "null_mean": float(null_values.mean()),
+        "null_sd": float(null_values.std(ddof=1)),
+        "null_p05": float(np.percentile(null_values, 5)),
+        "null_p95": float(np.percentile(null_values, 95)),
+        "p_value_one_sided": float(np.mean(null_values >= observed)),
+    }
+
+
 def _select_compromise(study: optuna.Study) -> optuna.trial.FrozenTrial:
     candidates = study.best_trials or [
         trial for trial in study.trials if trial.values is not None
@@ -876,6 +915,9 @@ def run(
         "iptw_w_clip": list(chosen_w_clip),
     }
     panel, model = seed_panel_report(metadata, train_df, valid_df)
+    _, primary_recommendation, _ = _valid_predictions(
+        model, valid_df, feature_names
+    )
     result = {
         **prepare.evaluate_on_valid(model, valid_df, feature_names),
         "chosen_trial": chosen.number,
@@ -888,6 +930,9 @@ def run(
         "depth_sweep": depth_sweep(metadata, train_df, valid_df),
         "n_estimators_sweep": n_estimators_sweep(metadata, train_df, valid_df),
         "s_t_ensemble_sweep": s_t_ensemble_sweep(metadata, train_df, valid_df),
+        "permutation_null_rmst": permutation_null_rmst(
+            valid_df, primary_recommendation
+        ),
         "elapsed_seconds": time.time() - started,
     }
     # The panel's first seed is the persisted model, so its metrics must match
