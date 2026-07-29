@@ -1,0 +1,235 @@
+{
+  "arena": "rsf_clinical",
+  "clinical_columns": [
+    "Adjuvant Chemo",
+    "Age",
+    "IS_MALE",
+    "Stage_IA",
+    "Stage_IB",
+    "Stage_II",
+    "Stage_III",
+    "Histology_Adenocarcinoma",
+    "Histology_Adenosquamous Carcinoma",
+    "Histology_Large Cell Carcinoma",
+    "Histology_Squamous Cell Carcinoma",
+    "Race_African American",
+    "Race_Asian",
+    "Race_Caucasian",
+    "Race_Native Hawaiian or Other Pacific Islander",
+    "Race_Unknown",
+    "Smoked?_No",
+    "Smoked?_Unknown",
+    "Smoked?_Yes"
+  ],
+  "feature_names": [
+    "Adjuvant Chemo",
+    "Age",
+    "IS_MALE",
+    "Stage_IA",
+    "Stage_IB",
+    "Stage_II",
+    "Stage_III",
+    "Histology_Adenocarcinoma",
+    "Histology_Adenosquamous Carcinoma",
+    "Histology_Large Cell Carcinoma",
+    "Histology_Squamous Cell Carcinoma",
+    "Race_African American",
+    "Race_Asian",
+    "Race_Caucasian",
+    "Race_Native Hawaiian or Other Pacific Islander",
+    "Race_Unknown",
+    "Smoked?_No",
+    "Smoked?_Unknown",
+    "Smoked?_Yes"
+  ],
+  "pretreatment_columns": [
+    "Age",
+    "IS_MALE",
+    "Stage_IA",
+    "Stage_IB",
+    "Stage_II",
+    "Stage_III",
+    "Histology_Adenocarcinoma",
+    "Histology_Adenosquamous Carcinoma",
+    "Histology_Large Cell Carcinoma",
+    "Histology_Squamous Cell Carcinoma",
+    "Race_African American",
+    "Race_Asian",
+    "Race_Caucasian",
+    "Race_Native Hawaiian or Other Pacific Islander",
+    "Race_Unknown",
+    "Smoked?_No",
+    "Smoked?_Unknown",
+    "Smoked?_Yes"
+  ],
+  "result": {
+    "chosen_trial": 26,
+    "elapsed_seconds": 190.52038073539734,
+    "n_features": 19,
+    "search": {
+      "chosen_rank_ci": 1,
+      "chosen_rank_rmst": 1,
+      "chosen_trial": 26,
+      "chosen_values": [
+        0.6932792463027564,
+        8.837189912922689
+      ],
+      "n_completed_trials": 30,
+      "pareto_front_size": 1,
+      "trial_ci": {
+        "iqr": 0.010393891563897362,
+        "max": 0.6932792463027564,
+        "mean": 0.6834717240701615,
+        "min": 0.672855353019211,
+        "sd": 0.00615329589438733
+      },
+      "trial_rmst": {
+        "iqr": 1.5613236202169292,
+        "max": 8.837189912922689,
+        "mean": 6.354700969389894,
+        "min": 2.466144042732677,
+        "sd": 1.4387398143790442
+      }
+    },
+    "seed_panel": {
+      "act_recommended_frac_mean": 0.3401544401544402,
+      "ensemble": {
+        "act_recommended_frac": 0.3281853281853282,
+        "flipped_vs_primary_seed": 8,
+        "val_ci": {
+          "iqr_boot": 0.03023533904991882,
+          "point": 0.7006338131970716,
+          "sd_seed": 0.0,
+          "se_boot": 0.02403568942564041,
+          "se_total": 0.02403568942564041
+        },
+        "val_rmst_diff": {
+          "iqr_boot": 3.482822507593408,
+          "point": 7.185113370081822,
+          "sd_seed": 0.0,
+          "se_boot": 2.7501359111161396,
+          "se_total": 2.7501359111161396
+        }
+      },
+      "metric_draws": 500,
+      "n_seeds": 10,
+      "oob_ci": {
+        "iqr": 0.0008492516056813892,
+        "mean": 0.6825987930375221,
+        "sd": 0.0006253102941621867
+      },
+      "optimism_gap_ci": 0.017853228777443664,
+      "per_seed": [
+        {
+          "act_recommended_frac": 0.3281853281853282,
+          "oob_ci": 0.6830365801621475,
+          "seed": 7,
+          "val_ci": 0.6992335282267971,
+          "val_rmst_diff": 7.093437407276291
+        },
+        {
+          "act_recommended_frac": 0.35135135135135137,
+          "oob_ci": 0.682371587061451,
+          "seed": 17,
+          "val_ci": 0.7017147349285118,
+          "val_rmst_diff": 6.500240726881067
+        },
+        {
+          "act_recommended_frac": 0.3204633204633205,
+          "oob_ci": 0.6820224656835852,
+          "seed": 27,
+          "val_ci": 0.6998968211074534,
+          "val_rmst_diff": 5.389903921308516
+        },
+        {
+          "act_recommended_frac": 0.38223938223938225,
+          "oob_ci": 0.6826985420026267,
+          "seed": 37,
+          "val_ci": 0.7018375669434481,
+          "val_rmst_diff": 9.265709400897357
+        },
+        {
+          "act_recommended_frac": 0.29343629343629346,
+          "oob_ci": 0.6823438790155886,
+          "seed": 47,
+          "val_ci": 0.7018866997494226,
+          "val_rmst_diff": 6.870388635384074
+        },
+        {
+          "act_recommended_frac": 0.35135135135135137,
+          "oob_ci": 0.6820113824652403,
+          "seed": 57,
+          "val_ci": 0.7011742740627918,
+          "val_rmst_diff": 7.926264098604086
+        },
+        {
+          "act_recommended_frac": 0.38996138996138996,
+          "oob_ci": 0.6818395925808937,
+          "seed": 67,
+          "val_ci": 0.6988895985849752,
+          "val_rmst_diff": 7.2386904838229
+        },
+        {
+          "act_recommended_frac": 0.3359073359073359,
+          "oob_ci": 0.6833579934941508,
+          "seed": 77,
+          "val_ci": 0.6992826610327716,
+          "val_rmst_diff": 6.952629924538272
+        },
+        {
+          "act_recommended_frac": 0.3281853281853282,
+          "oob_ci": 0.6837680725729137,
+          "seed": 87,
+          "val_ci": 0.7008057780179826,
+          "val_rmst_diff": 6.442457141400155
+        },
+        {
+          "act_recommended_frac": 0.3204633204633205,
+          "oob_ci": 0.682537835336625,
+          "seed": 97,
+          "val_ci": 0.6997985554955043,
+          "val_rmst_diff": 7.554277994498115
+        }
+      ],
+      "recommendation_agreement": 0.9548262548262547,
+      "recommendation_unanimous_frac": 0.8223938223938224,
+      "seeds": [
+        7,
+        17,
+        27,
+        37,
+        47,
+        57,
+        67,
+        77,
+        87,
+        97
+      ],
+      "val_ci": {
+        "iqr_boot": 0.03128554891878399,
+        "point": 0.7004520218149658,
+        "sd_seed": 0.0011665636104821818,
+        "se_boot": 0.023889630613322818,
+        "se_total": 0.02389247868905068
+      },
+      "val_rmst_diff": {
+        "iqr_boot": 3.2792980620344743,
+        "point": 7.123399973461083,
+        "sd_seed": 1.0211171610466165,
+        "se_boot": 2.549684057633853,
+        "se_total": 2.5700499643801904
+      }
+    },
+    "val_ci": 0.6992335282267971,
+    "val_rmst_diff": 7.093437407276291
+  },
+  "rsf_params": {
+    "max_depth": 8,
+    "max_features": 0.41458957985887235,
+    "min_samples_leaf": 10,
+    "min_samples_split": 34,
+    "n_estimators": 500,
+    "n_jobs": -1,
+    "random_state": 7
+  }
+}

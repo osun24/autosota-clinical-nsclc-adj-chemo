@@ -374,8 +374,63 @@ admits redundant and invalid combinations.
 7. *Both objectives.* BETTER needs `val_ci` > +0.0239 and `val_rmst_diff` >
    +2.70 months against iter_001's 0.6979 / 7.35.
 
-- val_ci: PENDING RUN
-- val_rmst_diff: PENDING RUN
+- val_ci: 0.7005 ± 0.0239
+- val_rmst_diff: 7.12 ± 2.57 (months)
 - n_features: 19
-- verdict: PENDING RUN
-- one_line_lesson: PENDING RUN
+- verdict: MIXED (nominal ci gain, nominal rmst loss, both inside noise)
+- one_line_lesson: More bootstraps per trial did not shrink winner's curse as
+  hypothesized — it got worse (1.71 vs 1.20 months) because the wider,
+  de-noised space let one trial dominate both objectives simultaneously
+  (Pareto front collapsed to size 1), concentrating rather than diluting the
+  selection pressure.
+
+**Result vs iter_001 (panel mean, same 500 draws; chosen params: leaf=10,
+split=34, depth=8, max_features=0.415, n_estimators=500).**
+
+| objective | iter_001 panel | iter_004 panel | delta | BETTER needs |
+|---|---|---|---|---|
+| val_ci | 0.6979 ± 0.0239 | 0.7005 ± 0.0239 | +0.0026 | > +0.0239 |
+| val_rmst_diff | 7.355 ± 2.702 | 7.123 ± 2.570 | -0.23 | > +2.70 |
+
+- OOB C-index 0.6826, optimism gap +0.0179 (comparable to iter_003's +0.0182)
+- recommendation agreement 0.955, unanimous 82.2%, ACT-recommended 34.0%
+- search: 30 trials, chosen trial ranked **1st of 30 on both objectives**
+  (Pareto front size 1) — search values ci 0.6933 / rmst 8.8372
+- shrinkage on adoption, search value to honest panel re-estimate:
+  **1.71 months** (iter_003's single-dominant-trial case was 1.20)
+- elapsed 190.5 s of the 25-min budget (up from ~45-49 s, still ample margin)
+
+**Findings.**
+1. Both deltas versus iter_001 are an order of magnitude inside their SEs.
+   Practically this configuration is indistinguishable from the iter_001
+   defaults — coordinating leaf/split size and constraining leaf size to the
+   library's [5, 30] scope neither helped nor hurt discrimination or RMST.
+2. The core hypothesis — that more bootstraps per trial reduces winner's curse
+   — is refuted by the shrinkage number, which went the wrong way. The
+   mechanism: with only 2 bootstraps, trials were noisy enough that no single
+   trial usually dominated both objectives (iter_003's Pareto front was 3).
+   With 8 bootstraps the per-trial estimate firmed up enough that one trial
+   swept both objectives (Pareto front 1), so the compromise selector no
+   longer averages across a small set of similarly-good options — it just
+   takes that one trial's still-noisy joint maximum at face value.
+3. Net effect: de-noising trials made the selector *more* confident in a
+   single winner, not less exposed to its noise. The 8 bootstraps reduced
+   per-configuration noise but did nothing about across-configuration
+   selection noise, which is what winner's curse actually measures.
+4. This suggests the real lever is not bootstraps-per-trial but either (a)
+   re-evaluating the top-K trials with a fresh, independent set of bootstraps
+   before final selection, or (b) discounting/regularizing the selection
+   criterion itself (e.g., picking near the Pareto front's centroid rather
+   than its edge). Neither is implemented this iteration; flagged for a future
+   CODE iteration.
+
+**Disposition.** Not BETTER, not worse-on-both, so per the workflow this is
+MIXED and may stay for up to 3 follow-up iterations. The code changes
+(coordinated leaf/split parameterization, expanded trials/bootstraps) are
+retained because they are a genuine correctness improvement independent of the
+noise result — the search space no longer admits invalid or below-scope
+leaf/split combinations — and the runtime cost (190 s) leaves ample budget
+margin. Champion pickle is unchanged (iter_001's model); this run's pickle is
+pruned. iter_001's panel numbers (0.6979 ± 0.0239 / 7.355 ± 2.70) remain the
+comparison point for BETTER going forward, since panel evaluation methodology
+does not depend on search settings.

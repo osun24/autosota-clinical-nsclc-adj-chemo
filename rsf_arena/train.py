@@ -29,8 +29,10 @@ ARENA_DIR = Path(__file__).resolve().parent
 RUNS_DIR = ARENA_DIR / "runs"
 # Names the run directory whose forest pickle is worth keeping on disk.
 BEST_POINTER = RUNS_DIR / "best_run.txt"
-DEFAULT_N_TRIALS = int(os.environ.get("RSF_ARENA_N_TRIALS", "10"))
-DEFAULT_BOOTSTRAPS = int(os.environ.get("RSF_ARENA_BOOTSTRAPS", "2"))
+DEFAULT_N_TRIALS = int(os.environ.get("RSF_ARENA_N_TRIALS", "30"))
+# Bootstraps per trial. iter_003 showed 2 leaves the search ranking configs on
+# noise, so the max over trials is largely winner's curse.
+DEFAULT_BOOTSTRAPS = int(os.environ.get("RSF_ARENA_BOOTSTRAPS", "8"))
 
 # Prespecified forest seeds for the reporting panel. The first entry is the
 # seed the persisted model uses, so artifacts keep their previous meaning.
@@ -52,20 +54,38 @@ def make_rsf(**params) -> RandomSurvivalForest:
     return RandomSurvivalForest(**params)
 
 
-def _suggest_params(trial: optuna.Trial) -> dict:
+def _rsf_params(raw: dict, random_state: int = 42) -> dict:
+    """Map a trial's search-space values onto RandomSurvivalForest kwargs.
+
+    `split_multiplier` is a search-space coordinate, not a forest argument, so
+    it is resolved here rather than passed through.
+    """
+    min_samples_leaf = int(raw["min_samples_leaf"])
     return {
-        "n_estimators": trial.suggest_int(
-            "n_estimators", 300, 1200, step=100
+        "n_estimators": int(raw["n_estimators"]),
+        "min_samples_split": int(
+            round(float(raw["split_multiplier"]) * min_samples_leaf)
         ),
-        "min_samples_split": trial.suggest_int("min_samples_split", 6, 30),
-        "min_samples_leaf": trial.suggest_int("min_samples_leaf", 3, 20),
-        "max_features": trial.suggest_float("max_features", 0.4, 1.0),
-        "max_depth": trial.suggest_categorical(
-            "max_depth", [None, 4, 6, 8, 12]
-        ),
+        "min_samples_leaf": min_samples_leaf,
+        "max_features": float(raw["max_features"]),
+        "max_depth": raw["max_depth"],
         "n_jobs": -1,
-        "random_state": 42,
+        "random_state": random_state,
     }
+
+
+def _suggest_params(trial: optuna.Trial) -> dict:
+    # Leaf size drives split size: sampling them independently admits invalid
+    # (split < 2*leaf) and redundant combinations. Leaf sizes below 5 are out
+    # of scope per the idea library.
+    raw = {
+        "min_samples_leaf": trial.suggest_int("min_samples_leaf", 5, 30),
+        "split_multiplier": trial.suggest_float("split_multiplier", 2.0, 4.0),
+        "n_estimators": trial.suggest_int("n_estimators", 300, 1200, step=100),
+        "max_features": trial.suggest_float("max_features", 0.4, 1.0),
+        "max_depth": trial.suggest_categorical("max_depth", [None, 4, 6, 8, 12]),
+    }
+    return _rsf_params(raw)
 
 
 def fit_model_from_metadata(
@@ -447,11 +467,7 @@ def run(
     )
     study.optimize(objective, n_trials=n_trials)
     chosen = _select_compromise(study)
-    params = {
-        **chosen.params,
-        "n_jobs": -1,
-        "random_state": 7,
-    }
+    params = _rsf_params(chosen.params, random_state=7)
     metadata = {
         "arena": "rsf_clinical",
         "clinical_columns": clinical_columns,
