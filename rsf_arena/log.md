@@ -1265,3 +1265,39 @@ changed between runs without opening `metadata.json`.
 
 **Disposition.** Adopted permanently at negligible cost. Headline numbers
 unchanged from iter_011, as expected for a provenance-only addition.
+
+---
+
+### iter_014 — controlled n_estimators sweep
+
+- type: PARAM
+- idea_id: `more_trees`
+- hypothesis: Following iter_010's controlled-sweep methodology (fixed other
+  params, vary one, full 10-seed panel, no search noise), sweeping
+  `n_estimators` from 300 to 3000 will show whether more trees meaningfully
+  improve either objective or just add runtime, and whether seed stability
+  keeps improving with more trees as expected from basic ensemble variance
+  reduction.
+- changed_files: `train.py`
+
+**Design.** Fixed baseline params, matching iter_010's interior choices for
+comparability: `min_samples_leaf=15`, `min_samples_split=37`,
+`max_features=0.7`, `max_depth=None` (iter_010 showed `None` had the lowest
+RMST seed variance of the whole depth sweep). Candidates:
+`n_estimators ∈ {300, 500, 700, 1000, 1500, 2000, 3000}`, each evaluated on
+the full 10-seed panel, reusing the same read-only sweep pattern as
+`depth_sweep` (panel mean and seed spread only, no bootstrap CI — this is a
+before/after comparison, not the run's headline numbers).
+
+**Red-line audit.** Identical structure to iter_010's cleared sweep: no new
+file reads (#1); all fits on training rows with IPTW fit on training rows
+only (#2); no rows dropped (#3); frozen metric functions (#4); recommendation
+rule unchanged (#5); ACT stays binary (#6); does not alter `_suggest_params`
+or the persisted model, so no verdict beyond NEUTRAL applies to the run's
+headline numbers (#7).
+
+- val_ci: PENDING RUN
+- val_rmst_diff: PENDING RUN
+- n_features: 19
+- verdict: PENDING RUN
+- one_line_lesson: PENDING RUN
