@@ -506,3 +506,50 @@ already computed; this only summarizes them). Recommend `iptw_clip_sweep` as
 the next PARAM candidate given the OBS-arm clip-ceiling finding, to check
 whether a wider or narrower `w_clip` changes ESS meaningfully without moving
 the estimand.
+
+---
+
+### iter_006 — IPTW weight-clip sweep (training diagnostics only)
+
+- type: PARAM
+- idea_id: `iptw_clip_sweep`
+- hypothesis: iter_005 found OBS-arm weights pinned at the upper clip of 10.0;
+  widening or narrowing the clip range and selecting by training-only ESS
+  (never validation) will find a range with materially higher overall ESS
+  than the current default (0.1, 10.0), which gave 64.1%.
+- changed_files: `train.py`
+
+**Design (prespecified before running).** Candidates for `w_clip`:
+`(0.1, 5.0)`, `(0.1, 10.0)` [current default], `(0.1, 20.0)`, `(0.05, 10.0)`.
+For each, compute IPTW weights on the **full training set** (not a bootstrap)
+and score by overall ESS — a training-only diagnostic, satisfying the idea's
+admissibility restriction. The argmax-ESS candidate is selected once, before
+any bootstrap fitting, and used uniformly for every bootstrap's weight
+computation and the final panel fit. `ps_clip` (0.05, 0.95) is left untouched;
+this iteration varies only the weight clip. The selection never looks at
+`val_ci` or `val_rmst_diff` — those are computed only after the clip is fixed.
+`metadata["iptw_w_clip"]` records the chosen range so `fit_model_from_metadata`
+(used by the human-only finalizer) stays consistent; it defaults to the old
+`(0.1, 10.0)` if the key is absent, so old run artifacts stay interpretable.
+
+**Red-line audit.**
+1. *Sealed test.* No new file reads. PASS.
+2. *No leakage.* Selection uses only the training-row propensity/weight
+   distribution; no validation metric informs which clip is chosen (the
+   admissibility condition this idea is CLEARED under). Per-bootstrap weights
+   are still fit inside each bootstrap on training rows only. PASS.
+3. *Never drop censored patients.* Unaffected — clipping only bounds weight
+   magnitude, never excludes rows. PASS.
+4. *Metric definitions versioned.* Objectives untouched; IPTW clip is not one
+   of the two frozen metrics. PASS.
+5. *Counterfactual recommendation.* Unaffected. PASS.
+6. *No regimen-level claims.* PASS.
+7. *Both objectives.* BETTER needs `val_ci` > +0.0239 and `val_rmst_diff` >
+   +2.70 months against iter_001's 0.6979 / 7.355 — the standing comparison
+   point, since search settings don't change what "current best" means.
+
+- val_ci: PENDING RUN
+- val_rmst_diff: PENDING RUN
+- n_features: 19
+- verdict: PENDING RUN
+- one_line_lesson: PENDING RUN
