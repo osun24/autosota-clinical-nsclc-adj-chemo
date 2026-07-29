@@ -545,16 +545,22 @@ DEPTH_SWEEP_BASE_PARAMS = {
 }
 
 
-def depth_sweep(
-    metadata: dict, train_df: pd.DataFrame, valid_df: pd.DataFrame
+def _param_sweep(
+    metadata: dict,
+    train_df: pd.DataFrame,
+    valid_df: pd.DataFrame,
+    base_params: dict,
+    param_name: str,
+    candidates: tuple,
 ) -> list[dict]:
-    """Seed-panel depth comparison, holding every other param fixed.
+    """Seed-panel comparison varying one param, holding the rest fixed.
 
     Read-only diagnostic sweep: does not touch `_suggest_params`, the Optuna
-    search space, or which model gets persisted. Isolates depth from the
-    search-selection noise documented in iter_003 and iter_009. Skips the
-    validation-row bootstrap (irrelevant to comparing depths against a fixed
-    validation set) and reports only the panel mean and seed spread.
+    search space, or which model gets persisted. Isolates one hyperparameter
+    from the search-selection noise documented in iter_003 and iter_009.
+    Skips the validation-row bootstrap (irrelevant to comparing candidates
+    against a fixed validation set) and reports only the panel mean and seed
+    spread.
     """
     feature_names = list(metadata["feature_names"])
     w_clip = tuple(metadata.get("iptw_w_clip", DEFAULT_W_CLIP))
@@ -567,8 +573,8 @@ def depth_sweep(
     outcome = _outcome(train_df)
 
     rows = []
-    for depth in DEPTH_SWEEP_CANDIDATES:
-        params = {**DEPTH_SWEEP_BASE_PARAMS, "max_depth": depth}
+    for candidate in candidates:
+        params = {**base_params, param_name: candidate}
         panel_ci, panel_rmst = [], []
         for seed in SEED_PANEL:
             model = make_rsf(**params, random_state=seed)
@@ -579,11 +585,12 @@ def depth_sweep(
             val_ci, val_rmst_diff = _metric_pair(valid_df, risk, recommendation)
             panel_ci.append(val_ci)
             panel_rmst.append(val_rmst_diff)
+            del model  # large forests (>=1500 trees) add up across the sweep
         panel_ci = np.array(panel_ci)
         panel_rmst = np.array(panel_rmst)
         rows.append(
             {
-                "max_depth": depth,
+                param_name: candidate,
                 "val_ci": float(panel_ci.mean()),
                 "val_ci_sd_seed": float(panel_ci.std(ddof=1)),
                 "val_rmst_diff": float(panel_rmst.mean()),
@@ -591,6 +598,42 @@ def depth_sweep(
             }
         )
     return rows
+
+
+def depth_sweep(
+    metadata: dict, train_df: pd.DataFrame, valid_df: pd.DataFrame
+) -> list[dict]:
+    return _param_sweep(
+        metadata,
+        train_df,
+        valid_df,
+        DEPTH_SWEEP_BASE_PARAMS,
+        "max_depth",
+        DEPTH_SWEEP_CANDIDATES,
+    )
+
+
+N_ESTIMATORS_SWEEP_CANDIDATES = (300, 500, 700, 1000, 1500, 2000)
+N_ESTIMATORS_SWEEP_BASE_PARAMS = {
+    "min_samples_leaf": 15,
+    "min_samples_split": 37,
+    "max_features": 0.7,
+    "max_depth": None,
+    "n_jobs": -1,
+}
+
+
+def n_estimators_sweep(
+    metadata: dict, train_df: pd.DataFrame, valid_df: pd.DataFrame
+) -> list[dict]:
+    return _param_sweep(
+        metadata,
+        train_df,
+        valid_df,
+        N_ESTIMATORS_SWEEP_BASE_PARAMS,
+        "n_estimators",
+        N_ESTIMATORS_SWEEP_CANDIDATES,
+    )
 
 
 def _select_compromise(study: optuna.Study) -> optuna.trial.FrozenTrial:
@@ -843,6 +886,7 @@ def run(
             model, valid_df, feature_names
         ),
         "depth_sweep": depth_sweep(metadata, train_df, valid_df),
+        "n_estimators_sweep": n_estimators_sweep(metadata, train_df, valid_df),
         "s_t_ensemble_sweep": s_t_ensemble_sweep(metadata, train_df, valid_df),
         "elapsed_seconds": time.time() - started,
     }

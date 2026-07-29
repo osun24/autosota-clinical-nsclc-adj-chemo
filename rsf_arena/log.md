@@ -1296,8 +1296,52 @@ rule unchanged (#5); ACT stays binary (#6); does not alter `_suggest_params`
 or the persisted model, so no verdict beyond NEUTRAL applies to the run's
 headline numbers (#7).
 
-- val_ci: PENDING RUN
-- val_rmst_diff: PENDING RUN
+- val_ci: 0.6992 ± 0.0239
+- val_rmst_diff: 7.37 ± 2.64 (months)
 - n_features: 19
-- verdict: PENDING RUN
-- one_line_lesson: PENDING RUN
+- verdict: NEUTRAL on the headline (search/panel unchanged, deltas vs
+  iter_001 negligible); sweep shows no case for more trees beyond ~700-1000
+- one_line_lesson: `n_estimators` beyond ~700-1000 trees buys essentially
+  nothing — `val_ci` is flat across the whole 300-2000 range (0.693-0.694,
+  well inside one seed-sd) and `val_rmst_diff` has no monotonic trend, so the
+  current search range (300-1200) is already past the point of diminishing
+  returns and doesn't need widening.
+
+**n_estimators sweep (fixed leaf=15, split=37, mtry=0.7, depth=None).**
+
+| n_estimators | val_ci | ci sd_seed | val_rmst_diff | rmst sd_seed |
+|---|---|---|---|---|
+| 300 | 0.6942 | 0.0012 | 6.923 | 0.934 |
+| 500 | 0.6936 | 0.0014 | 7.882 | 1.061 |
+| 700 | 0.6935 | 0.0010 | **8.574** | 0.726 |
+| 1000 | 0.6931 | **0.0004** | 7.787 | 1.024 |
+| 1500 | 0.6930 | 0.0008 | 8.052 | 1.715 |
+| 2000 | 0.6931 | 0.0007 | 8.149 | 1.175 |
+
+**Findings.**
+1. `val_ci` is essentially flat from 300 to 2000 trees (a 0.0012 band, well
+   under any single candidate's own seed-sd), confirming the standard
+   ensemble-averaging expectation that discrimination saturates early. There
+   is a mild, non-monotonic tightening of `ci sd_seed` up to 1000 trees, but
+   it does not continue improving at 1500-2000.
+2. `val_rmst_diff` has no monotonic relationship with tree count at all — 700
+   trees is the sweep's peak (8.574) despite sitting in the middle of the
+   range, and 1500 trees has the *worst* seed stability of the whole sweep
+   (sd_seed 1.715, higher than even the 300-tree case). More trees is not a
+   reliable lever for the RMST objective in either direction.
+3. This closes out the practical case for widening `more_trees`'s current
+   300-1200 search range: nothing in 1500-2000 outperforms what the existing
+   range already reaches, and the added compute (1500-2000 trees, ~2-3x the
+   fit time and pickle size of a 700-tree forest) would buy nothing. It also
+   explains why iter_014's first attempt at this sweep including a 3000-tree
+   candidate was killed (very likely OOM from repeatedly building
+   near-maximal forests in a loop) — the retry dropped 3000 from the sweep
+   and confirmed there was no signal being missed by not reaching it.
+
+**Disposition.** Diagnostic-only; `_suggest_params`'s existing
+`n_estimators` range (300-1200, step 100) is left unchanged — this sweep
+found no reason to widen it. `N_ESTIMATORS_SWEEP_CANDIDATES` in `train.py` is
+capped at 2000 (not the idea's stated 1500-3000 upper bound) after the 3000
+candidate triggered a background-task kill during this iteration's first
+attempt; retrying with a lower cap and explicit `del model` inside the sweep
+loop completed cleanly.
