@@ -812,3 +812,35 @@ binary (#6 PASS). Measurement-only; not expected to move either objective
 just the two prognostic terms that show real importance
 (`Age_x_StageIII`, `Age_x_Smoked_Yes`), dropping the four inert `ACT_x_*`
 terms, as follow-up slot 2 of 3 for iter_007's still-open MIXED status.
+
+---
+
+### iter_009 — trim interaction budget to load-bearing terms
+
+- type: ALGO
+- idea_id: `clinical_interaction_expansion` (refinement; follow-up slot 2 of 3
+  for iter_007's MIXED verdict)
+- hypothesis: Dropping the four `ACT_x_*` terms that iter_008 showed are
+  inert (rank 11, 14, 19, 23 of 25, two near zero importance) and keeping only
+  `Age_x_StageIII` and `Age_x_Smoked_Yes` will preserve most of iter_007's
+  RMST shift while reducing feature-count risk and removing dead weight from
+  the split-selection budget.
+- changed_files: `train.py`
+
+**Design.** `feature_names = clinical_columns + ["Age_x_StageIII",
+"Age_x_Smoked_Yes"]`, i.e. 21 features instead of 25. `prepare.py` is
+unchanged — `add_interaction_terms` still computes all six terms (cheap,
+harmless, keeps the full set available for any future reconsideration); only
+`train.py`'s feature selection is narrowed. Everything else (search space,
+clip selection, panel, diagnostics) is identical to iter_007/008.
+
+**Red-line audit.** Strict subset of an already-audited, already-cleared
+feature set; no new columns, no new data access, no change to fitting,
+weighting, or the recommendation rule. All seven red lines carry over
+unchanged from iter_007's audit. PASS on all.
+
+- val_ci: PENDING RUN
+- val_rmst_diff: PENDING RUN
+- n_features: PENDING RUN
+- verdict: PENDING RUN
+- one_line_lesson: PENDING RUN
