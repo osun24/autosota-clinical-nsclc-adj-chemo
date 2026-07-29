@@ -325,3 +325,57 @@ view of discrimination, and the trial-value spread quantifies the selection.
   iteration that widens the search must raise `bootstrap_n` alongside it.
 - The C-index has little room to move and is stable; the loop's leverage, if
   any exists, is on RMST.
+
+---
+
+### iter_004 — de-noised search over coordinated leaf and split sizes
+
+- type: PARAM
+- idea_id: `split_size_coordination` + `leaf_size_sweep`
+- hypothesis: Ranking configurations on 8 bootstraps instead of 2, over a
+  coordinated leaf/split grid that excludes the out-of-scope leaf sizes below
+  5, will select a configuration whose honest seed-panel re-estimate is higher
+  than the current 7.36 months and whose winner's-curse shrinkage is smaller
+  than the 1.2 months measured in iter_003.
+- changed_files: `train.py`
+
+**Why this idea.** iter_003 showed the search returns the argmax of 10 noisy
+RMST evaluations and that its 8.58 shrank to 7.36 on honest re-estimation. The
+fix is not more trials — that deepens the max over a noisy ranking — but less
+noise per trial. Separately, the current space samples `min_samples_leaf` from
+3, which the idea library puts out of scope below 5 absent an uncertainty
+audit, and it samples `min_samples_split` independently of leaf size, which
+admits redundant and invalid combinations.
+
+**Design (prespecified before running).**
+1. `bootstrap_n` 2 to 8, so each trial's objective averages 8 evaluations.
+2. `n_trials` 10 to 30. Justified only because per-trial noise drops first;
+   the two move together, as iter_003 required.
+3. `min_samples_leaf` sampled 5 to 30, bringing the space inside the library's
+   stated scope.
+4. `min_samples_split` is no longer independent: a multiplier of 2 to 4 times
+   the leaf size, so every combination is valid and non-redundant by
+   construction.
+5. `max_features`, `max_depth` and `n_estimators` ranges are untouched, so
+   depth and mtry remain available as separate later iterations.
+6. Primary readout stays the seed panel. The search-vs-panel shrinkage is
+   recorded as the secondary readout of whether selection got more reliable.
+
+**Red-line audit (before editing).**
+1. *Sealed test.* No new file reads. PASS.
+2. *No leakage.* More bootstraps means more resampling of **training** rows;
+   IPTW is refit inside each bootstrap on training rows only. Validation is
+   still only ever scored, never fitted on. PASS.
+3. *Never drop censored patients.* Bootstraps resample all training rows and
+   `require_two_arms` still holds. PASS.
+4. *Metric definitions versioned.* Untouched. PASS.
+5. *Counterfactual recommendation.* Untouched. PASS.
+6. *No regimen-level claims.* PASS.
+7. *Both objectives.* BETTER needs `val_ci` > +0.0239 and `val_rmst_diff` >
+   +2.70 months against iter_001's 0.6979 / 7.35.
+
+- val_ci: PENDING RUN
+- val_rmst_diff: PENDING RUN
+- n_features: 19
+- verdict: PENDING RUN
+- one_line_lesson: PENDING RUN
