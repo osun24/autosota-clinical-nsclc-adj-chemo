@@ -185,8 +185,46 @@ comparison for choosing something deployable.
 7. *Both objectives.* BETTER requires `val_ci` to gain more than 0.0239 and
    `val_rmst_diff` more than 2.70 months against iter_001.
 
-- val_ci: PENDING RUN
-- val_rmst_diff: PENDING RUN
+- val_ci: 0.6977 ± 0.0240
+- val_rmst_diff: 6.73 ± 2.81 (months)
 - n_features: 19
-- verdict: PENDING RUN
-- one_line_lesson: PENDING RUN
+- verdict: WORSE (nominally on both, but both gaps sit far inside the SE)
+- one_line_lesson: Averaging contrasts removes the seed variance from the
+  reported number without improving expected performance, because the seed
+  disagreement lives entirely in near-tie patients whose assignment carries no
+  RMST signal.
+
+**Result vs iter_001 (panel mean, same 500 draws).**
+
+| objective | iter_001 panel | iter_002 ensemble | delta | BETTER needs |
+|---|---|---|---|---|
+| val_ci | 0.6979 ± 0.0239 | 0.6977 ± 0.0240 | -0.0002 | > +0.0239 |
+| val_rmst_diff | 7.355 ± 2.702 | 6.725 ± 2.812 | -0.63 | > +2.70 |
+
+- ensemble ACT-recommended fraction: 30.9% (panel mean was 30.5%)
+- ensemble recommendations differing from seed 7: **6 of 259**
+- `sd_seed` for the ensemble is 0 by construction; elapsed 48.1 s
+
+**Findings.**
+1. The hypothesis is refuted. Both objectives moved down, and both moves are an
+   order of magnitude inside their SEs, so the honest reading is that the
+   ensemble policy is indistinguishable from a single randomly seeded forest.
+2. The diagnostic that explains why: iter_001 found 41 non-unanimous patients,
+   yet the ensemble differs from seed 7 on only 6. The seed disagreement is
+   concentrated in patients whose mean contrast is nearly zero. Averaging
+   resolves those ties, but resolving a tie one way rather than another has no
+   systematic outcome benefit — their assignment is close to arbitrary with
+   respect to survival.
+3. So recommendation instability is a *reporting* problem, not a performance
+   lever. The 5.72-to-9.88 RMST swing across seeds is these marginal patients
+   shuffling between the aligned and unaligned KM curves, and no assignment of
+   them is reliably better than another.
+4. Chasing the flipping patients further is not worthwhile. The RMST ceiling is
+   set by how few validation events there are (117, only 24 in the ACT arm),
+   not by which side of a tie a marginal patient lands on.
+
+**Disposition.** Not adopted as the recommendation policy. The ensemble is
+retained purely as an additive reported diagnostic, which costs nothing and
+gives a seed-free number; the headline objectives stay the panel mean so the
+comparison basis is unchanged for iter_003 onward. The iter_001 model remains
+champion and iter_002's pickle is deleted.

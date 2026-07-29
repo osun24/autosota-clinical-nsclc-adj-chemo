@@ -96,8 +96,13 @@ def _valid_predictions(
     model: RandomSurvivalForest,
     valid_df: pd.DataFrame,
     feature_names: list[str],
-) -> tuple[np.ndarray, np.ndarray]:
-    """Observed risk and the counterfactual ACT-vs-OBS recommendation."""
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Observed risk, the ACT-vs-OBS recommendation, and its contrast.
+
+    The contrast is `risk(ACT=0) - risk(ACT=1)`, so a positive value favours
+    ACT. Averaging contrasts across seeds before thresholding is what the
+    ensemble recommendation uses.
+    """
     risk = prepare.predict_rsf_risk(
         model, prepare.build_matrix_from_feature_names(valid_df, feature_names)
     )
@@ -111,7 +116,8 @@ def _valid_predictions(
     risk_untreated = prepare.predict_rsf_risk(
         model, prepare.build_matrix_from_feature_names(untreated, feature_names)
     )
-    return risk, (risk_treated < risk_untreated).astype(int)
+    contrast = risk_untreated - risk_treated
+    return risk, (risk_treated < risk_untreated).astype(int), contrast
 
 
 def _metric_pair(
@@ -163,11 +169,11 @@ def seed_panel_report(
     }
 
     primary_model = None
-    risks, recommendations, per_seed = [], [], []
+    risks, recommendations, contrasts, per_seed = [], [], [], []
     for seed in SEED_PANEL:
         model = make_rsf(**base_params, random_state=seed)
         model.fit(matrix, outcome, sample_weight=weights)
-        risk, recommendation = _valid_predictions(
+        risk, recommendation, contrast = _valid_predictions(
             model, valid_df, feature_names
         )
         val_ci, val_rmst_diff = _metric_pair(valid_df, risk, recommendation)
@@ -181,18 +187,26 @@ def seed_panel_report(
         )
         risks.append(risk)
         recommendations.append(recommendation)
+        contrasts.append(contrast)
         # Only the primary seed's forest is retained; each one is large.
         if primary_model is None:
             primary_model = model
 
     risks = np.asarray(risks)
     recommendations = np.asarray(recommendations)
+    contrasts = np.asarray(contrasts)
+    # Ensemble policy: average the counterfactual contrast across the panel,
+    # then threshold. Deterministic given the fixed seed panel.
+    ensemble_risk = risks.mean(axis=0)
+    ensemble_contrast = contrasts.mean(axis=0)
+    ensemble_recommendation = (ensemble_contrast > 0).astype(int)
     panel_ci = np.array([row["val_ci"] for row in per_seed])
     panel_rmst = np.array([row["val_rmst_diff"] for row in per_seed])
 
     rng = np.random.default_rng(METRIC_DRAW_SEED)
     n_valid = len(valid_df)
     draw_ci, draw_rmst = [], []
+    draw_ens_ci, draw_ens_rmst = [], []
     for _ in range(metric_draws):
         index = rng.integers(0, n_valid, size=n_valid)
         resampled = valid_df.iloc[index]
@@ -204,8 +218,17 @@ def seed_panel_report(
         ]
         draw_ci.append(float(np.mean([pair[0] for pair in pairs])))
         draw_rmst.append(float(np.mean([pair[1] for pair in pairs])))
+        ens_ci, ens_rmst = _metric_pair(
+            resampled,
+            ensemble_risk[index],
+            ensemble_recommendation[index],
+        )
+        draw_ens_ci.append(ens_ci)
+        draw_ens_rmst.append(ens_rmst)
     draw_ci = np.asarray(draw_ci)
     draw_rmst = np.asarray(draw_rmst)
+    draw_ens_ci = np.asarray(draw_ens_ci)
+    draw_ens_rmst = np.asarray(draw_ens_rmst)
 
     def summarize(
         panel: np.ndarray, draws: np.ndarray
@@ -223,6 +246,20 @@ def seed_panel_report(
             "sd_seed": seed_spread["sd"],
         }
 
+    def summarize_fixed(point: float, draws: np.ndarray) -> dict[str, float]:
+        """Interval for a policy that is deterministic given the panel."""
+        draw_spread = _spread(draws)
+        return {
+            "point": float(point),
+            "se_total": draw_spread["sd"],
+            "se_boot": draw_spread["sd"],
+            "iqr_boot": draw_spread["iqr"],
+            "sd_seed": 0.0,
+        }
+
+    ensemble_ci, ensemble_rmst = _metric_pair(
+        valid_df, ensemble_risk, ensemble_recommendation
+    )
     act_fraction = recommendations.mean(axis=0)
     modal_fraction = np.maximum(act_fraction, 1.0 - act_fraction)
     report = {
@@ -236,6 +273,14 @@ def seed_panel_report(
             np.mean(modal_fraction == 1.0)
         ),
         "act_recommended_frac_mean": float(act_fraction.mean()),
+        "ensemble": {
+            "val_ci": summarize_fixed(ensemble_ci, draw_ens_ci),
+            "val_rmst_diff": summarize_fixed(ensemble_rmst, draw_ens_rmst),
+            "act_recommended_frac": float(ensemble_recommendation.mean()),
+            "flipped_vs_primary_seed": int(
+                np.sum(ensemble_recommendation != recommendations[0])
+            ),
+        },
         "per_seed": per_seed,
     }
     return report, primary_model
@@ -311,9 +356,6 @@ def _save_artifacts(
     (run_dir / "metadata.json").write_text(
         json.dumps(metadata, indent=2, sort_keys=True) + "\n"
     )
-    (run_dir / "result.json").write_text(
-        json.dumps(result, indent=2, sort_keys=True) + "\n"
-    )
     # Retain only this run's model and the reigning champion's; the verdict
     # that decides which one survives is recorded in log.md afterwards.
     keep = {run_dir}
@@ -321,6 +363,9 @@ def _save_artifacts(
     if champion is not None:
         keep.add(champion)
     result["pruned_pickles"] = prune_run_pickles(keep)
+    (run_dir / "result.json").write_text(
+        json.dumps(result, indent=2, sort_keys=True) + "\n"
+    )
     return run_dir
 
 
