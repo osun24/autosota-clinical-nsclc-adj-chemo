@@ -543,7 +543,12 @@ def run(
     clinical_columns, pretreatment_columns = prepare.clinical_columns(
         train_df, valid_df
     )
-    feature_names = clinical_columns + list(prepare.INTERACTION_TERMS)
+    # iter_007-009: interaction terms (prepare.INTERACTION_TERMS) were tried
+    # and not adopted — the RMST association did not survive trimming to the
+    # terms permutation importance called load-bearing (iter_009). Left
+    # available in prepare.py at zero cost for a future, better-controlled
+    # attempt.
+    feature_names = clinical_columns
     chosen_w_clip, clip_candidates = select_iptw_clip(
         train_df, pretreatment_columns
     )

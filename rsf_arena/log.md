@@ -839,8 +839,68 @@ feature set; no new columns, no new data access, no change to fitting,
 weighting, or the recommendation rule. All seven red lines carry over
 unchanged from iter_007's audit. PASS on all.
 
-- val_ci: PENDING RUN
-- val_rmst_diff: PENDING RUN
-- n_features: PENDING RUN
-- verdict: PENDING RUN
-- one_line_lesson: PENDING RUN
+- val_ci: 0.6983 ± 0.0239
+- val_rmst_diff: 7.75 ± 2.76 (months)
+- n_features: 21
+- verdict: MIXED, and RESOLVED as NOT ADOPTED (closing follow-up early —
+  slot 2 of 3, not using slot 3)
+- one_line_lesson: Trimming to the two terms permutation importance called
+  load-bearing did not preserve iter_007's RMST shift — it mostly erased it
+  (+1.29 months shrank to +0.39), which means the shift was driven more by
+  which hyperparameter configuration the search happened to land on than by
+  the interaction terms themselves being a systematic source of signal.
+
+**Result vs iter_001 (standing comparison point) and vs iter_007 (25-feature
+version).**
+
+| objective | iter_001 (19 feat) | iter_007 (25 feat) | iter_009 (21 feat) |
+|---|---|---|---|
+| val_ci | 0.6979 ± 0.0239 | 0.6976 ± 0.0242 | 0.6983 ± 0.0239 |
+| val_rmst_diff | 7.355 ± 2.702 | 8.642 ± 2.761 | 7.749 ± 2.755 |
+| delta vs iter_001 (rmst) | — | +1.29 | +0.39 |
+
+- per-seed val_rmst_diff: 7.60, 8.41, 7.01, 6.89, 8.57, 7.23, 7.64, 9.11,
+  8.63, 6.40 — unlike iter_007, **two seeds fall below the iter_001 mean**
+  (6.89, 6.40), so the "every seed above baseline" pattern that made iter_007
+  notable did not reproduce
+- permutation importance ranking is nearly identical to iter_007's
+  (`Age_x_StageIII` still rank 4, `Age_x_Smoked_Yes` now rank 9) — the forest
+  is using these terms similarly in both runs, yet the RMST outcome differs
+  substantially
+
+**Findings.**
+1. The hypothesis behind this iteration — that dropping the inert `ACT_x_*`
+   terms would preserve most of the RMST gain while removing dead weight — is
+   refuted. Feature usage (per permutation importance) barely changed between
+   the 25- and 21-feature versions, but the RMST point estimate moved by 0.9
+   months, more than half of iter_007's original gain. If a feature the model
+   uses identically both times can be associated with such different RMST
+   outcomes, the RMST metric is picking up something other than that
+   feature's marginal contribution — most plausibly the specific
+   hyperparameter configuration the Optuna search happened to select each run
+   (search draws are not identical between 25-feature and 21-feature spaces,
+   since `max_features` samples a fraction of a different-sized feature set).
+2. This reinforces iter_007's own structural finding: with `se_boot` around
+   2.7 months on this validation set, RMST point estimates swing by amounts
+   comparable to genuine hyperparameter-search variation, not just seed
+   variation. Two different runs of "morally the same" model can differ by
+   ~1 month for reasons that have nothing to do with the feature set change
+   being tested.
+3. `val_ci` stayed flat across all three variants (0.6976-0.6983), the most
+   stable finding across this whole ALGO/CODE arc.
+
+**Disposition — resolving iter_007's MIXED status now rather than spending a
+third follow-up.** The interaction expansion (in either the original 6-term
+or the trimmed 2-term form) is **not adopted**. Evidence across two follow-ups
+shows the RMST association is not robust to a change that permutation
+importance said should be inert, which is a stronger disqualifier than
+either point estimate alone. `train.py` is reverted to
+`feature_names = clinical_columns` (19 features, no interaction terms) as
+part of this commit. `prepare.add_interaction_terms` and
+`prepare.INTERACTION_TERMS` are left in `prepare.py` — unused by `run()`, at
+zero cost, available if a future iteration wants to revisit interactions with
+a design that isolates the hyperparameter-search confound (e.g. a fixed
+hyperparameter configuration held constant across the with/without
+comparison). iter_001's panel numbers (0.6979 ± 0.0239 / 7.355 ± 2.70) remain
+the standing comparison point; no candidate has cleared BETTER through nine
+iterations.
