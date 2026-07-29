@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import pickle
 from pathlib import Path
 import random
+import subprocess
 import time
 
 import numpy as np
@@ -670,10 +672,69 @@ def promote_best(run_dir: str | Path) -> list[str]:
     return prune_run_pickles({run_path})
 
 
+METRIC_VERSION = (
+    "val_ci=sksurv.metrics.concordance_index_censored (Harrell's C); "
+    "val_rmst_diff=lifelines.utils.restricted_mean_survival_time, tau=60"
+)
+
+
+def _sha256(payload: str) -> str:
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _git_commit() -> str | None:
+    try:
+        return (
+            subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=ARENA_DIR,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            .stdout.strip()
+        )
+    except Exception:
+        return None
+
+
+def build_manifest(
+    metadata: dict, train_df: pd.DataFrame, valid_df: pd.DataFrame
+) -> dict:
+    """Hashed fingerprint of what produced a run, to catch silent drift.
+
+    Read-only: hashes already-computed objects (feature list, params, schema)
+    and repository state. Does not touch fitting, weighting, or selection.
+    """
+
+    def schema(df: pd.DataFrame) -> str:
+        return json.dumps(
+            {col: str(dtype) for col, dtype in df.dtypes.items()},
+            sort_keys=True,
+        )
+
+    return {
+        "metric_version": METRIC_VERSION,
+        "git_commit": _git_commit(),
+        "feature_names_hash": _sha256(
+            json.dumps(sorted(metadata["feature_names"]))
+        ),
+        "rsf_params_hash": _sha256(
+            json.dumps(metadata["rsf_params"], sort_keys=True)
+        ),
+        "train_schema_hash": _sha256(schema(train_df)),
+        "valid_schema_hash": _sha256(schema(valid_df)),
+        "n_train": len(train_df),
+        "n_valid": len(valid_df),
+    }
+
+
 def _save_artifacts(
     result: dict,
     model: RandomSurvivalForest,
     metadata: dict,
+    train_df: pd.DataFrame,
+    valid_df: pd.DataFrame,
 ) -> Path:
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
     run_dir = RUNS_DIR / time.strftime("run_%Y%m%d_%H%M%S")
@@ -685,6 +746,14 @@ def _save_artifacts(
     )
     (run_dir / "metadata.json").write_text(
         json.dumps(metadata, indent=2, sort_keys=True) + "\n"
+    )
+    (run_dir / "manifest.json").write_text(
+        json.dumps(
+            build_manifest(metadata, train_df, valid_df),
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
     )
     # Retain only this run's model and the reigning champion's; the verdict
     # that decides which one survives is recorded in log.md afterwards.
@@ -788,7 +857,9 @@ def run(
             )
     metadata["result"] = result
     if save_artifacts:
-        result["run_dir"] = str(_save_artifacts(result, model, metadata))
+        result["run_dir"] = str(
+            _save_artifacts(result, model, metadata, train_df, valid_df)
+        )
     return result
 
 

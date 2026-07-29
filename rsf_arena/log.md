@@ -1233,8 +1233,35 @@ definitions verbatim rather than changing them (#4). Recommendation rule
 untouched (#5). ACT stays binary (#6). Provenance-only; no verdict beyond
 NEUTRAL expected (#7).
 
-- val_ci: PENDING RUN
-- val_rmst_diff: PENDING RUN
+- val_ci: 0.6992 ± 0.0239
+- val_rmst_diff: 7.37 ± 2.64 (months)
 - n_features: 19
-- verdict: PENDING RUN
-- one_line_lesson: PENDING RUN
+- verdict: NEUTRAL (measurement-only; headline unchanged from iter_011)
+- one_line_lesson: `manifest.json` now records a hashed fingerprint
+  (feature list, params, schema, git commit) per run at negligible cost,
+  giving a fast drift check without re-diffing full metadata files.
+
+**Example manifest (this run).**
+
+```json
+{
+  "metric_version": "val_ci=sksurv.metrics.concordance_index_censored (Harrell's C); val_rmst_diff=lifelines.utils.restricted_mean_survival_time, tau=60",
+  "git_commit": "9b43583a2dd2b80d939ca393d68eb6ba890f78ee",
+  "feature_names_hash": "ce15de3e...",
+  "rsf_params_hash": "7b44104c...",
+  "train_schema_hash": "7ca6fa6d...",
+  "valid_schema_hash": "7ca6fa6d...",
+  "n_train": 775,
+  "n_valid": 259
+}
+```
+
+**Findings.** Train and validation schema hashes match, as expected (both
+loaded through the same `preprocess_split` with identical `ANALYSIS_COLUMNS`)
+— a useful sanity check confirmed automatically rather than assumed.
+`feature_names_hash` and `rsf_params_hash` give a one-line way to notice, in
+future log review, exactly when the feature set or chosen hyperparameters
+changed between runs without opening `metadata.json`.
+
+**Disposition.** Adopted permanently at negligible cost. Headline numbers
+unchanged from iter_011, as expected for a provenance-only addition.
