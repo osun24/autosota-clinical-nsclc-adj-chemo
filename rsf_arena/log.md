@@ -1000,3 +1000,41 @@ confirmed out of scope (already excluded); if `max_depth`'s search grid is
 revisited, dropping 6 in favor of 9 or leaning more on `None` is mildly
 supported but not urgent, since the whole depth-4-to-unrestricted band is
 statistically indistinguishable given current validation-set noise.
+
+---
+
+### iter_011 — Uno's IPCW C-index (additive diagnostic)
+
+- type: CODE
+- idea_id: `uno_ipcw_cindex`
+- hypothesis: Harrell's C-index (the frozen `val_ci` definition) is known to
+  be biased when censoring is treatment- or covariate-dependent; adding Uno's
+  IPCW C-index alongside it (never replacing it) will show whether the two
+  agree, which is a check on whether `val_ci` itself is trustworthy given
+  OBS-arm censoring patterns differ from ACT (iter_005's ESS finding already
+  showed the arms have different weight/propensity profiles).
+- changed_files: `train.py`
+
+**Design.** `sksurv.metrics.concordance_index_ipcw(survival_train,
+survival_test, estimate, tau=60.0)` per panel seed, using each seed's already-
+computed validation risk predictions (no refitting) and the training outcome
+array to estimate the censoring distribution (IPCW weights derived from
+training censoring only, consistent with red line 2). `tau=60` matches the
+existing RMST horizon so both added and frozen metrics reference the same
+follow-up window. Reported as `uno_ci` per seed and as a panel summary,
+identical treatment to `oob_ci` in iter_003. `val_ci` and `val_rmst_diff`
+remain the only two metrics used for BETTER/WORSE verdicts, per red line 4.
+
+**Red-line audit.** No new file reads (#1). IPCW weights are derived from the
+training outcome distribution only, consistent with `compute_iptw`'s
+train-only fitting elsewhere in this pipeline (#2). No rows dropped, this
+only computes a diagnostic (#3). `val_ci`/`val_rmst_diff` are untouched;
+Uno's C is added as a new column (#4, explicitly the admissibility condition
+this idea is CLEARED under). Recommendation rule untouched (#5). ACT stays
+binary (#6). Measurement-only (#7).
+
+- val_ci: PENDING RUN
+- val_rmst_diff: PENDING RUN
+- n_features: 19
+- verdict: PENDING RUN
+- one_line_lesson: PENDING RUN
