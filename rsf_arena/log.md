@@ -434,3 +434,35 @@ margin. Champion pickle is unchanged (iter_001's model); this run's pickle is
 pruned. iter_001's panel numbers (0.6979 ± 0.0239 / 7.355 ± 2.70) remain the
 comparison point for BETTER going forward, since panel evaluation methodology
 does not depend on search settings.
+
+---
+
+### iter_005 — IPTW effective sample size and weight diagnostics
+
+- type: CODE
+- idea_id: `effective_sample_size`
+- hypothesis: With only 114/775 training patients and 38/259 validation
+  patients in the ACT arm, IPTW weighting may be spending a large share of its
+  effective sample size on a handful of extreme-propensity patients; reporting
+  ESS and weight quantiles by arm will show whether the counterfactual
+  contrast (which both objectives depend on) rests on a well-supported
+  weighting or a fragile one.
+- changed_files: `train.py`
+
+**Design.** Using the training-row IPTW weights already computed once in
+`seed_panel_report` (they don't depend on forest seed), report: overall ESS =
+`(sum w)^2 / sum(w^2)`, ESS by arm, and weight quantiles (min/25/50/75/max)
+overall and by arm. Diagnostic only — added as new result fields, nothing
+about `compute_iptw`, the objective, or the recommendation rule changes.
+
+**Red-line audit.** No new file reads (PASS #1). Weights are the existing
+training-only IPTW fit, read-only summarized (PASS #2). No patients dropped,
+only summarized (PASS #3). Objectives untouched, this is an added diagnostic
+(PASS #4). Recommendation rule untouched (PASS #5). ACT stays binary (PASS
+#6). Measurement-only, no verdict beyond NEUTRAL expected (PASS #7).
+
+- val_ci: PENDING RUN
+- val_rmst_diff: PENDING RUN
+- n_features: 19
+- verdict: PENDING RUN
+- one_line_lesson: PENDING RUN
