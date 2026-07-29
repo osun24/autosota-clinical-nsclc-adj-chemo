@@ -904,3 +904,45 @@ hyperparameter configuration held constant across the with/without
 comparison). iter_001's panel numbers (0.6979 ± 0.0239 / 7.355 ± 2.70) remain
 the standing comparison point; no candidate has cleared BETTER through nine
 iterations.
+
+---
+
+### iter_010 — controlled depth sweep (bypassing the noisy search)
+
+- type: PARAM
+- idea_id: `depth_regularization`
+- hypothesis: Every PARAM/ALGO comparison so far has been confounded by
+  Optuna search noise (iter_003, iter_009). A direct sweep — same leaf size,
+  split size, mtry, and n_estimators held fixed, only `max_depth` varied,
+  each depth evaluated on the full 10-seed panel — will give a clean read on
+  whether bounding depth helps, without the search's winner's-curse
+  contaminating the comparison.
+- changed_files: `train.py`
+
+**Design (prespecified before running).** Fixed baseline params: `n_estimators=700`,
+`min_samples_leaf=15`, `min_samples_split=37` (multiplier 2.5, matching
+iter_004's coordination scheme), `max_features=0.7` — all interior points of
+their CLEARED PARAM ranges, chosen without looking at any result. Depth
+candidates per the idea: `3, 4, 5, 6, 7, 8, 9, 10, None`. For each candidate,
+refit the 10-seed panel (base params + that depth) on training rows and
+report the panel mean/SE for both objectives, using the same machinery as
+`seed_panel_report`. This is a read-only diagnostic sweep — it does not
+change `_suggest_params`, the Optuna search space, or which model gets
+persisted; the persisted model stays whatever the existing search selects.
+If one depth clearly and robustly dominates the sweep, that becomes a
+candidate to bound `max_depth`'s search range in a later iteration.
+
+**Red-line audit.** No new file reads (#1). All fits are on training rows,
+IPTW weights fit on training rows only, exactly as the existing panel does
+(#2). No rows dropped (#3). Metrics computed via the frozen `cindex` /
+`alignment_rmst_difference` (#4). Recommendation rule unchanged — risk under
+ACT=1/ACT=0 compared per patient (#5). ACT stays binary (#6). This sweep does
+not update `metadata["rsf_params"]` or the persisted model, so it cannot by
+itself produce a BETTER/WORSE verdict on the run's headline numbers; those
+stay whatever the unmodified search+panel produces this iteration (#7).
+
+- val_ci: PENDING RUN
+- val_rmst_diff: PENDING RUN
+- n_features: 19
+- verdict: PENDING RUN
+- one_line_lesson: PENDING RUN
