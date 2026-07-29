@@ -228,3 +228,55 @@ retained purely as an additive reported diagnostic, which costs nothing and
 gives a seed-free number; the headline objectives stay the panel mean so the
 comparison basis is unchanged for iter_003 onward. The iter_001 model remains
 champion and iter_002's pickle is deleted.
+
+---
+
+### iter_003 — out-of-bag discrimination and search-selection diagnostics
+
+- type: CODE
+- idea_id: `oob_diagnostics`
+- hypothesis: The Optuna search maximizes validation metrics over only 10
+  trials with a 2.70-month RMST SE, so the reported validation numbers are
+  partly a selection artefact; an out-of-bag discrimination estimate computed
+  on training rows, plus the spread of all trial objective values, will expose
+  how much of the headline is search noise.
+- changed_files: `train.py`
+
+**Why this idea.** iter_002 established that the marginal-patient churn is not
+a performance lever, so the next question is whether the numbers we are
+steering by are trustworthy at all. Hyperparameters are chosen by taking a
+weighted maximum over trials whose objectives are evaluated on validation. With
+10 trials and an RMST SE of 2.70 months, the winner is plausibly the luckiest
+draw rather than the best configuration. OOB C-index gives a validation-free
+view of discrimination, and the trial-value spread quantifies the selection.
+
+**Design (prespecified before running).**
+1. Fit each panel forest with `oob_score=True` and record `oob_score_`, the
+   OOB concordance on training rows. This is added only to the panel's fit
+   parameters, not to `metadata["rsf_params"]`, so the human finalizer is
+   unaffected.
+2. Record every completed trial's two objective values, plus the mean, SD, min
+   and max of each objective across trials, and the chosen trial's rank.
+3. Report `val_ci - oob_ci` as an optimism gap. This is a diagnostic only; it
+   does not redefine or replace either objective, per the idea's admissibility.
+4. Nothing in the fitting, the search, or the recommendation rule changes.
+
+**Red-line audit (before editing).**
+1. *Sealed test.* No new file reads. PASS.
+2. *No leakage.* OOB scores are computed inside the training bootstrap by the
+   forest itself and touch no validation row. Trial values are already
+   computed; recording them adds no new information flow. PASS.
+3. *Never drop censored patients.* Unchanged. PASS.
+4. *Metric definitions versioned.* Both objectives are untouched. OOB
+   concordance is an added diagnostic column, explicitly not a replacement.
+   PASS.
+5. *Counterfactual recommendation.* Unchanged. PASS.
+6. *No regimen-level claims.* PASS.
+7. *Both objectives.* Measurement-only again; a verdict of BETTER is not
+   expected and would in fact be suspicious.
+
+- val_ci: PENDING RUN
+- val_rmst_diff: PENDING RUN
+- n_features: 19
+- verdict: PENDING RUN
+- one_line_lesson: PENDING RUN
