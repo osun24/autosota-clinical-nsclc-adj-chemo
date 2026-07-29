@@ -438,6 +438,101 @@ def seed_panel_report(
     return report, primary_model
 
 
+def s_t_ensemble_sweep(
+    metadata: dict, train_df: pd.DataFrame, valid_df: pd.DataFrame
+) -> list[dict]:
+    """Compare S-learner-only vs S+T standardized-contrast-ensemble RMST.
+
+    Read-only diagnostic comparison: does not change the headline model, the
+    persisted model, or `val_ci`. Fits everything fresh per seed rather than
+    reusing the main panel's S-learner fit, to keep this sweep self-contained.
+    """
+    feature_names = list(metadata["feature_names"])
+    pretreatment_columns = list(metadata["pretreatment_columns"])
+    w_clip = tuple(metadata.get("iptw_w_clip", DEFAULT_W_CLIP))
+    base_params = {
+        key: value
+        for key, value in metadata["rsf_params"].items()
+        if key != "random_state"
+    }
+    act_train = train_df[train_df["Adjuvant Chemo"] == 1]
+    obs_train = train_df[train_df["Adjuvant Chemo"] == 0]
+    act_params = {
+        **base_params,
+        "min_samples_leaf": max(int(base_params["min_samples_leaf"]) * 2, 10),
+    }
+
+    rows = []
+    for seed in SEED_PANEL:
+        weights, _, _ = prepare.compute_iptw(
+            train_df, covariate_cols=pretreatment_columns, w_clip=w_clip
+        )
+        s_model = make_rsf(**base_params, random_state=seed)
+        s_model.fit(
+            prepare.build_matrix_from_feature_names(train_df, feature_names),
+            _outcome(train_df),
+            sample_weight=weights,
+        )
+        risk_valid, recommendation_s, contrast_s_valid = _valid_predictions(
+            s_model, valid_df, feature_names
+        )
+        _, _, contrast_s_train = _valid_predictions(
+            s_model, train_df, feature_names
+        )
+
+        act_model = make_rsf(**act_params, random_state=seed)
+        act_model.fit(
+            prepare.build_matrix_from_feature_names(act_train, feature_names),
+            _outcome(act_train),
+        )
+        obs_model = make_rsf(**base_params, random_state=seed)
+        obs_model.fit(
+            prepare.build_matrix_from_feature_names(obs_train, feature_names),
+            _outcome(obs_train),
+        )
+
+        def t_contrast(df: pd.DataFrame) -> np.ndarray:
+            x = prepare.build_matrix_from_feature_names(df, feature_names)
+            return prepare.predict_rsf_risk(
+                obs_model, x
+            ) - prepare.predict_rsf_risk(act_model, x)
+
+        contrast_t_train = t_contrast(train_df)
+        contrast_t_valid = t_contrast(valid_df)
+
+        mu_s, sigma_s = contrast_s_train.mean(), contrast_s_train.std()
+        mu_t, sigma_t = contrast_t_train.mean(), contrast_t_train.std()
+        z_s = (contrast_s_valid - mu_s) / sigma_s
+        z_t = (contrast_t_valid - mu_t) / sigma_t
+        recommendation_ensemble = ((z_s + z_t) / 2.0 > 0).astype(int)
+
+        val_ci = prepare.cindex(
+            risk_valid,
+            valid_df["OS_MONTHS"].to_numpy(float),
+            valid_df["OS_STATUS"].to_numpy(int),
+        )
+        rows.append(
+            {
+                "seed": int(seed),
+                "val_ci": val_ci,
+                "val_rmst_diff_s_only": prepare.alignment_rmst_difference(
+                    valid_df, recommendation_s
+                ),
+                "val_rmst_diff_s_t_ensemble": prepare.alignment_rmst_difference(
+                    valid_df, recommendation_ensemble
+                ),
+                "act_recommended_frac_s_only": float(recommendation_s.mean()),
+                "act_recommended_frac_ensemble": float(
+                    recommendation_ensemble.mean()
+                ),
+                "flipped_vs_s_only": int(
+                    np.sum(recommendation_ensemble != recommendation_s)
+                ),
+            }
+        )
+    return rows
+
+
 DEPTH_SWEEP_CANDIDATES: tuple[int | None, ...] = (3, 4, 5, 6, 7, 8, 9, 10, None)
 DEPTH_SWEEP_BASE_PARAMS = {
     "n_estimators": 700,
@@ -679,6 +774,7 @@ def run(
             model, valid_df, feature_names
         ),
         "depth_sweep": depth_sweep(metadata, train_df, valid_df),
+        "s_t_ensemble_sweep": s_t_ensemble_sweep(metadata, train_df, valid_df),
         "elapsed_seconds": time.time() - started,
     }
     # The panel's first seed is the persisted model, so its metrics must match

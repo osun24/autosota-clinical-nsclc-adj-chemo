@@ -1138,8 +1138,65 @@ risk predictions, no refitting).
    applies to the headline. The comparison table decides whether a follow-up
    should adopt the ensemble recommendation.
 
-- val_ci: PENDING RUN
-- val_rmst_diff: PENDING RUN
+- val_ci: 0.6992 ± 0.0239
+- val_rmst_diff: 7.37 ± 2.64 (months)
 - n_features: 19
-- verdict: PENDING RUN
-- one_line_lesson: PENDING RUN
+- verdict: NEUTRAL on the headline (unchanged, diagnostic-only iteration);
+  the S+T ensemble comparison itself is a flagged MIXED finding — promising
+  metric, concerning mechanism, **not adopted**
+- one_line_lesson: The S+T ensemble raised mean RMST from 7.365 to 8.665 and
+  roughly halved its seed variance, but it does so by recommending ACT to
+  ~50% of patients instead of ~32%, a shift substantially driven by a
+  T-learner arm-forest trained on only 114 ACT patients (70 events) that gets
+  equal weight against the much better-supported S-learner in the
+  standardized average — a promising number built on a fragile mechanism is
+  not evidence the loop should act on unsupervised.
+
+**S-only vs S+T ensemble, same 10-seed panel, same search-selected params.**
+
+| | mean | sd (seed) | range |
+|---|---|---|---|
+| `val_rmst_diff` (S-only) | 7.365 | 1.736 | 4.47 to 10.62 |
+| `val_rmst_diff` (S+T ensemble) | **8.665** | **0.746** | 7.35 to 9.76 |
+| ACT-recommended fraction (S-only) | 0.33 | — | 0.305 to 0.382 |
+| ACT-recommended fraction (ensemble) | **0.50** | — | 0.459 to 0.533 |
+| patients flipped vs S-only (of 259) | — | — | 32 to 59 |
+
+**Findings.**
+1. The ensemble's RMST mean is +1.30 months over S-only on the identical seed
+   panel and identical search-selected hyperparameters — a much cleaner,
+   less-confounded comparison than iter_007's interaction-expansion arc,
+   since nothing here depends on a different Optuna search draw. It also cuts
+   seed variance by more than half (1.736 to 0.746), the most seed-stable
+   RMST result recorded in this arena to date. Vs iter_001's baseline
+   (7.355 ± 2.702), the delta is +1.31, still short of the formal +2.70
+   BETTER threshold.
+2. The mechanism behind the gain is concerning enough to withhold adoption.
+   `min_samples_leaf` is doubled for the ACT-arm forest (per
+   `rsf_t_learner`'s stated risk mitigation), but doubling a leaf-size
+   regularizer does not compensate for a 5.8x smaller training set (114 vs
+   661 rows, 70 vs 278 events) the way equal standardized weighting implies.
+   Z-scoring makes the two contrasts commensurate in *scale*, not in
+   *reliability* — a noisy contrast and a well-supported one end up with the
+   same 50% vote.
+3. The behavioral consequence is large: roughly 1 in 6 of the entire
+   validation cohort (32-59 of 259 patients per seed) gets a different
+   treatment recommendation, and the overall ACT-recommended fraction nearly
+   doubles from ~33% to ~50%. That is a substantial clinical-recommendation
+   shift to accept on the strength of a metric alone, particularly given red
+   line 5's requirement that the counterfactual recommendation be trustworthy,
+   not merely score-maximizing.
+4. `val_ci` is unaffected by design (computed from the S-learner's factual
+   risk in both cases, per this iteration's audit) and stays flat.
+
+**Disposition — not adopted.** The S+T ensemble is not swapped into the
+headline recommendation path. This is flagged as an open lead rather than a
+dead end: a properly reliability-weighted combination (e.g., shrinking the
+T-learner's contribution toward zero in proportion to the ACT arm's much
+smaller effective sample size, rather than a flat 50/50 average) could
+plausibly keep the seed-stability benefit while reducing the recommendation
+churn — but that is a design decision with real clinical stakes and belongs
+with human review, not further autonomous iteration in the remaining budget.
+`s_t_ensemble_sweep` is retained in the codebase as a diagnostic comparison
+function for that future work; it is not called from any path that affects
+the persisted model or headline metrics.
