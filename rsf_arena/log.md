@@ -461,8 +461,48 @@ only summarized (PASS #3). Objectives untouched, this is an added diagnostic
 (PASS #4). Recommendation rule untouched (PASS #5). ACT stays binary (PASS
 #6). Measurement-only, no verdict beyond NEUTRAL expected (PASS #7).
 
-- val_ci: PENDING RUN
-- val_rmst_diff: PENDING RUN
+- val_ci: 0.7005 ± 0.0239
+- val_rmst_diff: 7.12 ± 2.57 (months)
 - n_features: 19
-- verdict: PENDING RUN
-- one_line_lesson: PENDING RUN
+- verdict: NEUTRAL (measurement-only; bit-identical to iter_004, as expected
+  since weighting itself is untouched)
+- one_line_lesson: IPTW weights are usable (overall ESS 496/775, 64%) but the
+  OBS arm has patients pinned at the upper clip of 10.0, meaning a handful of
+  observation-arm patients look almost certain to have received chemo by their
+  covariates and are being reweighted up by the full clip ceiling to
+  compensate — worth revisiting the clip range as a dedicated PARAM iteration.
+
+**IPTW diagnostics (training rows, added columns; weighting itself untouched).**
+
+| | n | ESS | ESS % | weight median | weight IQR | weight range |
+|---|---|---|---|---|---|---|
+| overall | 775 | 496.4 | 64.1% | 1.242 | [1.048, 1.713] | [0.155, 10.0] |
+| ACT | 114 | 89.5 | 78.5% | 0.236 | [0.198, 0.301] | [0.155, 0.977] |
+| OBS | 661 | 470.9 | 71.2% | 1.369 | [1.123, 1.811] | [0.898, **10.0**] |
+
+**Findings.**
+1. Both arms individually keep 70-80% of their nominal sample size after
+   weighting, which is adequate. The overall ESS (64%) is lower mostly because
+   ACT and OBS are weighted toward a shared reference prevalence, not because
+   either arm alone is thin.
+2. The OBS-arm weight distribution touches the upper clip bound of 10.0
+   exactly, which means at least one training patient has an estimated
+   propensity for OBS so low (equivalently, predicted probability of ACT so
+   high given covariates) that the raw IPTW weight exceeded the clip and was
+   truncated. Clipping is doing its job — the weight was capped rather than
+   left to blow up — but a weight sitting at the cap is a signal that the
+   propensity model is confidently extrapolating for that patient, which
+   the current `iptw_clip_sweep` idea (CLEARED, PARAM) is the prespecified way
+   to investigate.
+3. The ACT arm's weights are much more compressed (IQR 0.198-0.301, no
+   clipping observed) — consistent with ACT being the minority treatment,
+   where predicted propensity for ACT clusters lower and away from the clip
+   boundary.
+4. No objective moved, as expected: this iteration reports on already-computed
+   weights and changes nothing about `compute_iptw` or the bootstrap fitting.
+
+**Disposition.** Diagnostic retained permanently at low cost (weights are
+already computed; this only summarizes them). Recommend `iptw_clip_sweep` as
+the next PARAM candidate given the OBS-arm clip-ceiling finding, to check
+whether a wider or narrower `w_clip` changes ESS meaningfully without moving
+the estimand.

@@ -163,6 +163,46 @@ def _spread(values: np.ndarray) -> dict[str, float]:
     }
 
 
+def _weight_quantiles(weights: np.ndarray) -> dict[str, float]:
+    q = np.percentile(weights, [0, 25, 50, 75, 100])
+    return {
+        "min": float(q[0]),
+        "p25": float(q[1]),
+        "median": float(q[2]),
+        "p75": float(q[3]),
+        "max": float(q[4]),
+    }
+
+
+def _effective_sample_size(weights: np.ndarray) -> float:
+    return float(weights.sum() ** 2 / np.sum(weights**2))
+
+
+def iptw_diagnostics(
+    train_df: pd.DataFrame, weights: np.ndarray
+) -> dict:
+    """ESS and weight quantiles overall and by arm, on training rows only.
+
+    Diagnostic only: read-only summary of weights already fit for training;
+    does not change `compute_iptw`, the objective, or the recommendation rule.
+    """
+    treatment = train_df["Adjuvant Chemo"].to_numpy(int)
+    report = {
+        "n": len(weights),
+        "ess": _effective_sample_size(weights),
+        "quantiles": _weight_quantiles(weights),
+    }
+    for arm, label in ((1, "act"), (0, "obs")):
+        mask = treatment == arm
+        arm_weights = weights[mask]
+        report[label] = {
+            "n": int(mask.sum()),
+            "ess": _effective_sample_size(arm_weights),
+            "quantiles": _weight_quantiles(arm_weights),
+        }
+    return report
+
+
 def seed_panel_report(
     metadata: dict,
     train_df: pd.DataFrame,
@@ -297,6 +337,7 @@ def seed_panel_report(
         ),
         "act_recommended_frac_mean": float(act_fraction.mean()),
         "oob_ci": _spread(np.array([row["oob_ci"] for row in per_seed])),
+        "iptw_diagnostics": iptw_diagnostics(train_df, weights),
         "optimism_gap_ci": float(
             panel_ci.mean()
             - float(np.mean([row["oob_ci"] for row in per_seed]))
